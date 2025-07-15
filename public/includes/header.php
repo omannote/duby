@@ -19,6 +19,8 @@ if (session_status() === PHP_SESSION_NONE) {
         <div class="collapse navbar-collapse">
             <ul class="navbar-nav ms-auto">
                 <?php if(isset($_SESSION['user'])): ?>
+                    <li class="nav-item"><a class="nav-link" href="/dashboard.php">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/pos.php">POS</a></li>
                     <li class="nav-item"><a class="nav-link" href="/logout.php">Logout</a></li>
                 <?php endif; ?>
             </ul>
