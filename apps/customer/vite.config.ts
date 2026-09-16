@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // مسارات العودة من الدفع تُخدَم من نفس الصفحة
+  preview: { port: 4174 },
+  appType: 'spa',
   build: {
     target: 'es2022',
     assetsInlineLimit: 0,

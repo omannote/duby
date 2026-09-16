@@ -182,3 +182,35 @@ test.describe('رحلة العميل', () => {
     expect(bundle).not.toMatch(/service_role/);
   });
 });
+
+test.describe('صفحات العودة من الدفع', () => {
+  test('E7 — صفحة النجاح لا تؤكد الدفع', async ({ page }) => {
+    await page.goto('/payment/success?rt=abc&success=true');
+
+    await expect(page.getByRole('heading', { name: 'شكرًا لك' })).toBeVisible();
+
+    // معامل success في الرابط ليس دليل دفع: الصفحة تقول «نتحقق» لا «تم الدفع»
+    await expect(page.getByText('نتحقق من عملية الدفع')).toBeVisible();
+    await expect(page.getByText('تم الدفع بنجاح')).toHaveCount(0);
+  });
+
+  test('صفحة الإلغاء تعرض بديلًا واضحًا', async ({ page }) => {
+    await page.goto('/payment/cancel?rt=abc');
+
+    await expect(page.getByRole('heading', { name: 'لم تكتمل عملية الدفع' })).toBeVisible();
+    await expect(page.getByText('واتساب')).toBeVisible();
+  });
+
+  test('صفحات الدفع لا تستدعي أي واجهة', async ({ page }) => {
+    const calls: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/functions/v1/')) calls.push(request.url());
+    });
+
+    await page.goto('/payment/success?rt=abc');
+    await page.waitForLoadState('networkidle');
+
+    // لا استعلام من صفحة عامة: التأكيد كله على الخادم
+    expect(calls).toEqual([]);
+  });
+});

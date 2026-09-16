@@ -5,6 +5,7 @@ import { ProfileStep } from './screens/ProfileStep.js';
 import { OtpStep } from './screens/OtpStep.js';
 import { PhotoStep } from './screens/PhotoStep.js';
 import { DoneStep } from './screens/DoneStep.js';
+import { PaymentReturn } from './screens/PaymentReturn.js';
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'dev';
 
@@ -26,8 +27,12 @@ type Step =
 
 export function App() {
   const [step, setStep] = useState<Step>({ name: 'checking' });
+  const path = window.location.pathname;
 
   const scan = useCallback(async () => {
+    // صفحات العودة من الدفع لا تمسح رمزًا
+    if (path.startsWith('/payment/')) return;
+
     const token = normalizeQrToken(window.location.href);
 
     if (!token) {
@@ -51,11 +56,28 @@ export function App() {
         ? { name: 'otp', scan: result.data }
         : { name: 'profile', scan: result.data },
     );
-  }, []);
+  }, [path]);
 
   useEffect(() => {
     void scan();
   }, [scan]);
+
+  if (path.startsWith('/payment/')) {
+    return (
+      <div className="page">
+        <header>
+          <span className="brand">دوبي</span>
+          <span className="tagline">للغسيل السريع والجاف</span>
+        </header>
+        <main>
+          <PaymentReturn outcome={path.includes('cancel') ? 'cancel' : 'success'} />
+        </main>
+        <footer>
+          <span className="version">الإصدار {APP_VERSION}</span>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

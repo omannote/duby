@@ -74,3 +74,36 @@ test.describe('لوحة الموظفين — المرحلة الثالثة', () 
     expect(scripts.join('\n')).not.toMatch(/\.refreshSession\(/);
   });
 });
+
+test.describe('بوابة الدفع — المرحلة الرابعة', () => {
+  test('E5 — أزرار البوابة موجودة في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    // البوابة تعرض السبب والبديلين، لا زرًّا معطّلًا بلا تفسير
+    expect(bundle).toContain('لا يمكن التسليم قبل تسجيل الدفع');
+    expect(bundle).toContain('استلمت المبلغ نقدًا');
+    expect(bundle).toContain('تحقق من ثواني');
+  });
+
+  test('لا مفاتيح مزوّدي الدفع في حزمة الواجهة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).not.toMatch(/thawani-api-key/);
+    expect(bundle).not.toMatch(/THAWANI_SECRET/);
+    expect(bundle).not.toMatch(/OTP_PEPPER/);
+  });
+});

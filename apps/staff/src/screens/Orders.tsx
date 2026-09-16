@@ -9,6 +9,8 @@ import {
 import { supabase } from '../supabase.js';
 import { callOrdersApi } from '../lib/orders-api.js';
 import { FieldStepModal } from '../components/FieldStepModal.js';
+import { InvoiceModal } from '../components/InvoiceModal.js';
+import { callPaymentsApi } from '../lib/payments-api.js';
 import { OrderDetails } from '../components/OrderDetails.js';
 
 export type Order = {
@@ -50,6 +52,7 @@ export function Orders() {
     step: 'pickup' | 'delivery';
   } | null>(null);
   const [details, setDetails] = useState<Order | null>(null);
+  const [invoiceFor, setInvoiceFor] = useState<Order | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -115,6 +118,37 @@ export function Orders() {
 
     if (!result.ok) setError(`${result.message} (${result.requestId.slice(0, 6)})`);
     else await load();
+  }
+
+  /** يسجّله المندوب الذي استلم المبلغ؛ يُقيَّد في تسويته اليومية باسمه. */
+  async function recordCash(order: Order) {
+    if (!window.confirm(`تأكيد استلام ${order.invoice_amount?.toFixed(3)} ر.ع نقدًا؟`)) return;
+
+    setBusyId(order.id);
+    const result = await callPaymentsApi('/cash', { order_id: order.id });
+    setBusyId(null);
+
+    if (!result.ok) {
+      setError(`${result.message} (${result.requestId.slice(0, 6)})`);
+      return;
+    }
+
+    await load();
+  }
+
+  /** الطبقة الثانية من تأكيد الدفع: استعلام يدوي حين يتأخر الـwebhook. */
+  async function verifyPayment(order: Order) {
+    setBusyId(order.id);
+    const result = await callPaymentsApi<{ paid: boolean }>('/verify', { order_id: order.id });
+    setBusyId(null);
+
+    if (!result.ok) {
+      setError(`${result.message} (${result.requestId.slice(0, 6)})`);
+      return;
+    }
+
+    if (!result.data.paid) setError('لم يُسجَّل الدفع لدى ثواني بعد.');
+    await load();
   }
 
   const active = orders.filter((order) => ACTIVE_STATUSES.includes(order.status));
@@ -196,9 +230,23 @@ export function Orders() {
               onAdvance={() => void advance(order)}
               onCancel={() => void cancel(order)}
               onOpen={() => setDetails(order)}
+              onRecordCash={() => void recordCash(order)}
+              onVerifyPayment={() => void verifyPayment(order)}
             />
           ))}
         </ul>
+      )}
+
+      {invoiceFor && (
+        <InvoiceModal
+          orderId={invoiceFor.id}
+          orderNo={invoiceFor.order_no}
+          onClose={() => setInvoiceFor(null)}
+          onDone={async () => {
+            setInvoiceFor(null);
+            await load();
+          }}
+        />
       )}
 
       {fieldStep && (
@@ -241,12 +289,16 @@ function OrderCard({
   onAdvance,
   onCancel,
   onOpen,
+  onRecordCash,
+  onVerifyPayment,
 }: {
   order: Order;
   busy: boolean;
   onAdvance: () => void;
   onCancel: () => void;
   onOpen: () => void;
+  onRecordCash: () => void;
+  onVerifyPayment: () => void;
 }) {
   const next = nextStatus(order.status);
   const unpaidDelivery = order.status === 'out_for_delivery' && order.payment_status !== 'paid';
@@ -289,7 +341,23 @@ function OrderCard({
         {isFinal(order.status) && <span className="muted">لا إجراءات — حالة نهائية</span>}
       </div>
 
-      {unpaidDelivery && <p className="warn">لا يمكن التسليم قبل تسجيل الدفع. سجّل الدفع أولًا.</p>}
+      {/*
+       * البوابة: الزر معطّل، والسبب ظاهر، والبدائل حاضرة. القاعدة نفسها
+       * مفروضة في الدالة وفي قيد CHECK — ثلاث طبقات مستقلة.
+       */}
+      {unpaidDelivery && (
+        <div className="payment-gate">
+          <p className="warn">لا يمكن التسليم قبل تسجيل الدفع.</p>
+          <div className="card-actions">
+            <button type="button" className="ghost" onClick={onVerifyPayment} disabled={busy}>
+              تحقق من ثواني
+            </button>
+            <button type="button" onClick={onRecordCash} disabled={busy}>
+              استلمت المبلغ نقدًا
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

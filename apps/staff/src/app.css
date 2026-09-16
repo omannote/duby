@@ -673,3 +673,12 @@ button.icon {
   color: #fff;
   font-size: 0.85rem;
 }
+
+.payment-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e5e7eb;
+}
