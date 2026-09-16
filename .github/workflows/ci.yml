@@ -43,6 +43,11 @@ jobs:
       - name: ترويسات الأمن
         run: pnpm verify:headers
 
+      # قائمة الوظائف واحدة في ثلاثة أماكن: القرص، config.toml، وقائمة فحص
+      # deno. تباعدها لا يظهر إلا حين يفشل supabase start في وظيفة أخرى.
+      - name: قائمة وظائف Edge متطابقة
+        run: pnpm verify:functions
+
       - name: اختبارات الوحدة
         run: pnpm test:unit
 

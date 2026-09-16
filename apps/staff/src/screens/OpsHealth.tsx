@@ -14,6 +14,7 @@ type Health = {
     dead: number;
     sent_last_hour: number;
     stale_pending: number;
+    success_pct_24h: number | null;
   };
   payments: { stuck: number; paid_last_24h: number; failed_last_24h: number };
   settlements: {

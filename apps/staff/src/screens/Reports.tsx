@@ -20,7 +20,7 @@ const VALUE_LABELS: Record<string, string> = {
   manual_cash: 'نقدي مسجَّل يدويًا',
 };
 
-function display(column: string, value: Cell, format?: string): string {
+function display(column: string, value: Cell | undefined, format?: string): string {
   if (typeof value === 'string' && VALUE_LABELS[value]) return VALUE_LABELS[value];
   return formatCell(value, format as never);
 }

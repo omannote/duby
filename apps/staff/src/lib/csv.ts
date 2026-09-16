@@ -14,7 +14,7 @@ export type Column = {
 
 export type CsvSpec = { columns: Column[] };
 
-export function formatCell(value: Cell, format?: Column['format']): string {
+export function formatCell(value: Cell | undefined, format?: Column['format']): string {
   if (value === null || value === undefined) return '—';
 
   switch (format) {
@@ -42,7 +42,12 @@ function neutralize(text: string): string {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
 }
 
-function csvField(value: Cell): string {
+/*
+ * يقبل `undefined` لا `Cell` وحده: عمود معرَّف في المواصفة وغائب عن الصف حالة
+ * واقعية (عرض تغيّر، أو صف من نسخة أقدم)، و`noUncheckedIndexedAccess` يكشفها.
+ * التسلسل يكتبها خلية فارغة لا يسقطها.
+ */
+function csvField(value: Cell | undefined): string {
   const text = neutralize(value === null || value === undefined ? '' : String(value));
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }

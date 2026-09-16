@@ -46,5 +46,8 @@ verify_jwt = true
 [functions.settlements]
 verify_jwt = true
 
-[functions.admin]
-verify_jwt = true
+# عامل الإشعارات يتحقق من المفتاح بنفسه (يقارنه بـservice_role) لا عبر
+# verify_jwt: الجدولة تستدعيه، لا مستخدم بجلسة، ولا وجود لدالة admin —
+# مسؤولياتها صارت دوال RPC محروسة بالدور.
+[functions.notifications]
+verify_jwt = false
