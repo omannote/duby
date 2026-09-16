@@ -1,0 +1,62 @@
+{
+  "name": "duby",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run",
+    "test:db": "node scripts/run-db-tests.mjs",
+    "test:e2e": "node scripts/e2e-build.mjs && playwright test",
+    "perf:reports": "node scripts/perf-reports.mjs",
+    "test:migration": "node scripts/test-migration.mjs",
+    "size-limit": "size-limit",
+    "gen:types": "node scripts/gen-types.mjs",
+    "verify:headers": "node scripts/verify-headers.mjs --file apps/staff/public/_headers apps/customer/public/_headers",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset",
+    "check": "pnpm typecheck && pnpm lint && pnpm verify:headers && pnpm verify:functions && pnpm test:unit && pnpm build && pnpm verify:sw && pnpm size-limit",
+    "check:functions": "cd supabase/functions && deno check public-qr/index.ts staff-orders/index.ts payments/index.ts payments-webhook/index.ts settlements/index.ts notifications/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/thawani.ts _shared/whatsapp.ts && deno lint && deno fmt --check",
+    "verify:sw": "node scripts/verify-sw.mjs",
+    "verify:functions": "node scripts/verify-functions.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.63.0",
+    "@size-limit/file": "^11.1.6",
+    "eslint": "^9.17.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.4.2",
+    "size-limit": "^11.1.6",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^3.2.7"
+  },
+  "size-limit": [
+    {
+      "name": "staff app",
+      "path": "apps/staff/dist/assets/*.js",
+      "limit": "300 kB"
+    },
+    {
+      "name": "customer app",
+      "path": "apps/customer/dist/assets/*.js",
+      "limit": "120 kB"
+    }
+  ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

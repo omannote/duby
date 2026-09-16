@@ -1,0 +1,16 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './App.js';
+import { syncAppHeight } from './viewport.js';
+import './app.css';
+
+syncAppHeight();
+
+const container = document.getElementById('root');
+if (!container) throw new Error('root element missing');
+
+createRoot(container).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);

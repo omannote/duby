@@ -1,0 +1,117 @@
+name: نشر إلى الإنتاج
+
+# الإنتاج يُنشر من وسم إصدار فقط، بعد نجاح staging وبموافقة يدوية
+# على بيئة production في إعدادات المستودع.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'اكتب "نشر" للتأكيد'
+        required: true
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: الإنتاج
+    runs-on: ubuntu-latest
+    environment: production # يتطلب موافقة يدوية
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: تأكيد النشر اليدوي
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm != 'نشر'
+        run: |
+          echo "::error::لم يُؤكَّد النشر"
+          exit 1
+
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # مثبَّت لا latest: الأنواع المولَّدة مُلتزَمة، وبوابة ADR-002 تقارن
+      # المولَّد بالملتزَم. مولِّد يتغيّر وحده يعني بوابة تحمرّ بلا سبب.
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.117.0 }
+
+      # نسخة احتياطية قبل كل نشر — الخطوة التي لا يُنشر بدونها
+      - name: نسخة احتياطية قبل النشر
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase db dump --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --file "backup-pre-deploy-$(date +%F-%H%M).sql"
+
+      - name: رفع النسخة الاحتياطية
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-pre-deploy-${{ github.sha }}
+          path: backup-pre-deploy-*.sql
+          retention-days: 90
+
+      - name: تطبيق الهجرات
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: نشر وظائف Edge
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$(ls -A supabase/functions 2>/dev/null | grep -v '^_')" ]; then
+            supabase functions deploy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          else
+            echo "لا وظائف بعد — المرحلة صفر"
+          fi
+
+      - name: بناء الواجهات
+        env:
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_APP_VERSION: ${{ github.ref_name }}
+        run: pnpm build
+
+      - name: حفظ خرائط المصدر ثم إخراجها من النشر
+        run: |
+          mkdir -p sourcemaps
+          find apps/*/dist -name '*.map' -exec cp --parents {} sourcemaps/ \; 2>/dev/null || true
+          find apps/*/dist -name '*.map' -delete
+          echo "✓ الخرائط محفوظة كأثر ومحذوفة من حزمة النشر"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sourcemaps-${{ github.sha }}
+          path: sourcemaps/
+          retention-days: 30
+
+      - name: نشر لوحة الموظفين
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/staff/dist --project-name=duby-staff --branch=main
+
+      - name: نشر صفحة العميل
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/customer/dist --project-name=duby-customer --branch=main
+
+      - name: التحقق من الترويسات بعد النشر
+        run: |
+          node scripts/verify-headers.mjs ${{ vars.STAFF_URL }}
+          node scripts/verify-headers.mjs ${{ vars.CUSTOMER_URL }}

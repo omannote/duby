@@ -1,0 +1,63 @@
+project_id = "duby"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+# المسار الافتراضي ./seed.sql، وملفنا في مجلد seed. بلا هذا السطر يمرّ
+# `supabase db reset` بنجاح وهو لا يبذر شيئًا — نجاح صامت أسوأ من فشل.
+[db.seed]
+enabled = true
+sql_paths = ["./seed/seed.sql"]
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5174"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = false
+
+# هنا true عمدًا، والمنع في [auth] أعلاه. الـCLI يترجم enable_signup=false في
+# هذا القسم إلى GOTRUE_EXTERNAL_EMAIL_ENABLED=false — أي تعطيل موفّر البريد
+# كله لا التسجيل الذاتي وحده، فيُرفض دخول كل موظف بـemail_provider_disabled.
+# والبريد هو المسار الوحيد لدخول الموظفين.
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[storage]
+enabled = true
+file_size_limit = "2MiB"
+
+[functions.public-qr]
+verify_jwt = false
+
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.staff-orders]
+verify_jwt = true
+
+[functions.payments]
+verify_jwt = true
+
+[functions.settlements]
+verify_jwt = true
+
+# عامل الإشعارات يتحقق من المفتاح بنفسه (يقارنه بـservice_role) لا عبر
+# verify_jwt: الجدولة تستدعيه، لا مستخدم بجلسة، ولا وجود لدالة admin —
+# مسؤولياتها صارت دوال RPC محروسة بالدور.
+[functions.notifications]
+verify_jwt = false

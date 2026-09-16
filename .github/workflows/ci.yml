@@ -1,0 +1,231 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: بوابات الجودة
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: فحص الأنواع
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: التنسيق
+        run: pnpm format:check
+
+      # Cloudflare وحده يفسّر _headers، فلا يُكشف الخطأ فيها إلا بعد النشر.
+      # الفحص الساكن هنا يمنعه من الوصول إلى هناك أصلًا.
+      - name: ترويسات الأمن
+        run: pnpm verify:headers
+
+      # قائمة الوظائف واحدة في ثلاثة أماكن: القرص، config.toml، وقائمة فحص
+      # deno. تباعدها لا يظهر إلا حين يفشل supabase start في وظيفة أخرى.
+      - name: قائمة وظائف Edge متطابقة
+        run: pnpm verify:functions
+
+      - name: اختبارات الوحدة
+        run: pnpm test:unit
+
+      - name: بناء الواجهات
+        run: pnpm build
+
+      # اسم القاعدة يُصغَّر عند البناء، فلا يكفي وجودها في المصدر
+      - name: Service Worker لا يعترض Supabase
+        run: pnpm verify:sw
+
+      - name: حجم الحزمة
+        run: pnpm size-limit
+
+  e2e:
+    name: اختبارات المتصفح
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # WebKit إلزامي: Safari على iPhone هو المتصفح الذي تعثّر فيه النظام السابق
+      - name: تثبيت المتصفحات
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      # لا بناء منفصل هنا: globalSetup يبني بقيم الاختبار، والبناء بلا تلك
+      # القيم يُنتج حزمة تعرض «غير مهيّأ» — فبناؤه مرتين كان هدرًا ثم تجاهلًا.
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  database:
+    name: قاعدة البيانات
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # مثبَّت لا latest: الأنواع المولَّدة مُلتزَمة، وبوابة ADR-002 تقارن
+      # المولَّد بالملتزَم. مولِّد يتغيّر وحده يعني بوابة تحمرّ بلا سبب.
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.117.0 }
+
+      - name: تشغيل Supabase محليًا
+        run: supabase start
+
+      - name: تطبيق كل الهجرات من الصفر
+        run: supabase db reset --no-seed
+
+      - name: اختبارات pgTAP
+        run: pnpm test:db
+
+      # «سكربتات الترحيل مُختبَرة» لا تُغلق بقراءة الشيفرة: تُشغَّل السكربتات
+      # نفسها على مخطط الهدف، ويُتحقق من كل تحويل، ثم يُتراجع ويُعاد التحميل.
+      - name: بروفة الترحيل
+        run: pnpm test:migration
+
+      # معيار «كل تقرير < ٢ ثانية» لا يُغلق بالتقدير: يولّد سنة بيانات ويقيس.
+      # يفرّغ الجداول بعده، ولهذا يسبق إعادة البذر أدناه.
+      - name: زمن التقارير على بيانات سنة كاملة
+        run: pnpm perf:reports
+
+      # البيانات البذرية جزء من العقد: كسرها يعني أن مطورًا جديدًا
+      # لن يستطيع تشغيل النظام
+      - name: البيانات البذرية
+        run: supabase db reset
+
+      # ADR-002: الأنواع مولَّدة من المخطط. أي فرق هنا يعني أن هجرة غيّرت
+      # المخطط دون تحديث الأنواع — وهو بالضبط التباعد الذي نمنعه.
+      - name: الأنواع متزامنة مع المخطط
+        run: |
+          pnpm gen:types
+          git diff --exit-code packages/shared/src/db.ts \
+            || (echo "::error::الأنواع المولَّدة قديمة. شغّل pnpm gen:types والتزم بالنتيجة." && exit 1)
+
+  functions:
+    name: وظائف Edge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+
+      - name: فحص الأنواع
+        working-directory: supabase/functions
+        run: deno check public-qr/index.ts staff-orders/index.ts payments/index.ts payments-webhook/index.ts settlements/index.ts notifications/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/thawani.ts _shared/whatsapp.ts
+
+      - name: Lint
+        working-directory: supabase/functions
+        run: deno lint
+
+      - name: التنسيق
+        working-directory: supabase/functions
+        run: deno fmt --check
+
+      # الوظيفة تحمل pepper الخاص بـOTP ومفتاح واتساب: أي تسجيل للرمز الصريح
+      # يناقض مبدأ عدم تخزينه
+      - name: لا تسجيل لرمز التحقق
+        working-directory: supabase/functions
+        run: |
+          if grep -nE 'console\.(log|error|warn|info)\([^)]*\bcode\b' public-qr/index.ts | grep -v 'sent.code'; then
+            echo "::error::يبدو أن رمز التحقق يُسجَّل"
+            exit 1
+          fi
+          echo "✓ لا تسجيل لرمز التحقق"
+
+  security:
+    name: الأمن
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: فحص الأسرار
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # العتبة high لا critical: المتوسطة الباقية في خادم تطوير vitest وحده،
+      # ولا إصدار مُصلَح لها بعد. رفع العتبة يعني بوابة حمراء دائمًا، وبوابة
+      # حمراء دائمًا تُقرأ ضجيجًا فتُتجاهل.
+      - name: ثغرات الاعتماديات
+        run: pnpm audit --audit-level=high
+
+      # anon key وحده يُسمح بوصوله للمتصفح. أي مفتاح آخر في حزمة الواجهة
+      # تسريب، لا خطأ تهيئة.
+      - name: لا أسرار في حزمة الواجهة
+        run: |
+          pnpm build
+          # خرائط المصدر تضم شيفرة المكتبات وتعليقاتها، فتُطابق النمط زورًا.
+          # الفحص على ما يُنفَّذ في المتصفح فعلًا.
+          if grep -rEl 'service_role|sk_live|sk_test|wab_live|SUPABASE_SERVICE' \
+               --include='*.js' --include='*.html' --include='*.css' apps/*/dist 2>/dev/null; then
+            echo "::error::مفتاح حساس وُجد في حزمة الواجهة"
+            exit 1
+          fi
+          echo "✓ لا أسرار في الحزم المبنية"

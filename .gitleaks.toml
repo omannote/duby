@@ -1,0 +1,31 @@
+title = "duby"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role"
+description = "مفتاح service_role لـ Supabase"
+regex = '''(?i)service_role["'\s:=]+ey[A-Za-z0-9_-]{20,}'''
+tags = ["supabase", "critical"]
+
+[[rules]]
+id = "whatsapp-bridge-key"
+description = "مفتاح جسر واتساب"
+regex = '''wab_(live|test)_[A-Za-z0-9]{12,}'''
+tags = ["whatsapp"]
+
+[[rules]]
+id = "thawani-secret"
+description = "مفتاح ثواني السري"
+regex = '''(?i)thawani[_-]?secret[_-]?key["'\s:=]+[A-Za-z0-9_]{16,}'''
+tags = ["payments", "critical"]
+
+[allowlist]
+description = "أمثلة التوثيق ومخرجات البناء"
+paths = [
+  '''docs/chatgpt-transcript\.md''',
+  '''docs/laravel-rebuild-brief\.md''',
+  '''\.env\.example''',
+  '''pnpm-lock\.yaml''',
+]

@@ -1,0 +1,227 @@
+:root {
+  --brand: #0f3d2e;
+  --accent: #c9a227;
+  --bg: #f7f8f7;
+  --text: #1a1a1a;
+  --muted: #6b7280;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, 'Segoe UI', Tahoma, sans-serif;
+  font-size: 16px;
+}
+
+.page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 0 1rem env(safe-area-inset-bottom);
+}
+
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 2rem 0 1rem;
+}
+
+.brand {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.tagline {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+main {
+  padding: 1rem 0;
+}
+
+h1 {
+  font-size: 1.4rem;
+  color: var(--brand);
+  margin: 0 0 0.75rem;
+}
+
+p {
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.token {
+  font-weight: 600;
+  color: var(--text);
+}
+
+footer {
+  padding: 1rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* ── خطوات الرحلة ──────────────────────────────────────────────────────── */
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.step h1 {
+  margin-bottom: 0.25rem;
+}
+
+label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input {
+  /* ≥16px وإلا قرّب Safari الصفحة تلقائيًا عند التركيز */
+  font: inherit;
+  font-size: 16px;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--text);
+  width: 100%;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.otp-input {
+  font-size: 1.6rem;
+  letter-spacing: 0.5rem;
+  text-align: center;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+button {
+  font: inherit;
+  min-height: 48px; /* مساحة لمس مريحة على الهاتف */
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.link {
+  background: transparent;
+  color: var(--brand);
+  min-height: 40px;
+  text-decoration: underline;
+}
+
+.error {
+  padding: 0.6rem 0.75rem;
+  margin: 0;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 0.5rem;
+  color: #b42318;
+}
+
+.blocked h1 {
+  font-size: 1.25rem;
+}
+
+.request-id {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.preview {
+  aspect-ratio: 4 / 3;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview.placeholder {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.done {
+  text-align: center;
+  align-items: center;
+}
+
+.check {
+  width: 4rem;
+  height: 4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #027a48;
+  font-size: 2rem;
+}
+
+.order-no {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.privacy {
+  font-size: 0.78rem;
+  line-height: 1.6;
+  margin: 0 0 0.35rem;
+}
+
+.version {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.check.cancel {
+  background: #fef3f2;
+  color: #b42318;
+}
