@@ -8,8 +8,9 @@ import { SignIn } from './screens/SignIn.js';
 import { Properties } from './screens/Properties.js';
 import { Customers } from './screens/Customers.js';
 import { Orders } from './screens/Orders.js';
+import { Cash } from './screens/Cash.js';
 
-type Tab = 'orders' | 'customers' | 'properties' | 'more';
+type Tab = 'orders' | 'cash' | 'customers' | 'properties' | 'more';
 
 export function App() {
   const session = useStaffSession();
@@ -69,7 +70,8 @@ export function App() {
       </header>
 
       <main className="app-content">
-        {tab === 'orders' && <Orders />}
+        {tab === 'orders' && <Orders staffId={staff.staffId} />}
+        {tab === 'cash' && <Cash role={staff.role} staffId={staff.staffId} />}
         {tab === 'customers' && <Customers role={staff.role} />}
         {tab === 'properties' && <Properties role={staff.role} />}
         {tab === 'more' && (
@@ -96,6 +98,9 @@ export function App() {
       <nav className="app-nav no-print">
         <button type="button" data-active={tab === 'orders'} onClick={() => setTab('orders')}>
           الطلبات
+        </button>
+        <button type="button" data-active={tab === 'cash'} onClick={() => setTab('cash')}>
+          الصندوق
         </button>
         <button type="button" data-active={tab === 'customers'} onClick={() => setTab('customers')}>
           العملاء

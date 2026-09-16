@@ -682,3 +682,52 @@ button.icon {
   padding-top: 0.5rem;
   border-top: 1px dashed #e5e7eb;
 }
+
+/* ── الصندوق ───────────────────────────────────────────────────────────── */
+.settlement-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1.5rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+/* الرقم الذي يهم المندوب، كبيرًا وواضحًا */
+.big-amount {
+  font-size: 2rem;
+  color: var(--brand);
+}
+
+.settlement-summary button {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.method-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border-radius: 0.5rem;
+}
+
+.method-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border-radius: 0.5rem;
+}
+
+.method-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+}

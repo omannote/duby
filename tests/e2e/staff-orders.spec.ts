@@ -107,3 +107,50 @@ test.describe('بوابة الدفع — المرحلة الرابعة', () => {
     expect(bundle).not.toMatch(/OTP_PEPPER/);
   });
 });
+
+test.describe('الصندوق — المرحلة 4ب', () => {
+  test('E13/E14 — عناصر دورة التسوية في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('إيداع النقد');
+    expect(bundle).toContain('المبلغ المؤكَّد من الإثبات');
+    // رسالة رفض الاعتماد الذاتي معروضة للمستخدم، والقاعدة مفروضة في القاعدة
+    expect(bundle).toContain('لا يمكنك اعتماد تسويتك');
+  });
+
+  test('E15 — تحذير النقد غير المودَع في شاشة الطلبات لا الصندوق', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('لديك نقد غير مودَع من');
+    expect(bundle).toContain('أودعه لتتمكن من التحصيل');
+  });
+
+  test('E16 — الإيداع البنكي افتراضي والاستثناء يتطلب سببًا', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('سبب عدم الإيداع البنكي');
+    // المندوب يعرف أن الاستثناء مرئي
+    expect(bundle).toContain('سيظهر هذا في تقرير الاستثناءات');
+  });
+});

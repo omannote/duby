@@ -43,7 +43,7 @@ const ACTIVE_STATUSES: OrderStatus[] = [
   'out_for_delivery',
 ];
 
-export function Orders() {
+export function Orders({ staffId }: { staffId: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tab, setTab] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +53,11 @@ export function Orders() {
   } | null>(null);
   const [details, setDetails] = useState<Order | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Order | null>(null);
+  const [unhanded, setUnhanded] = useState<{
+    unhanded_amount: number;
+    oldest_business_date: string;
+    blocked: boolean;
+  } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -68,7 +73,19 @@ export function Orders() {
 
     if (loadError) setError('تعذّر تحميل الطلبات');
     else setOrders((data ?? []) as unknown as Order[]);
-  }, []);
+
+    /*
+     * تحذير النقد غير المودَع يظهر هنا لا في شاشة الصندوق: المندوب لن يفتح
+     * الصندوق من تلقائه، وشاشة الطلبات هي ما يفتحه طوال اليوم.
+     */
+    const { data: pending } = await supabase
+      .from('v_pending_cash')
+      .select('unhanded_amount, oldest_business_date, blocked')
+      .eq('courier_id', staffId)
+      .maybeSingle();
+
+    setUnhanded(pending ?? null);
+  }, [staffId]);
 
   useEffect(() => {
     void load();
@@ -185,6 +202,18 @@ export function Orders() {
       {error && (
         <p className="error" role="alert">
           {error}
+        </p>
+      )}
+
+      {unhanded && (
+        <p
+          className={unhanded.blocked ? 'error' : 'warn'}
+          role={unhanded.blocked ? 'alert' : 'status'}
+        >
+          {unhanded.blocked ? '⚠ ' : ''}
+          لديك نقد غير مودَع من {unhanded.oldest_business_date} —{' '}
+          {Number(unhanded.unhanded_amount).toFixed(3)} ر.ع
+          {unhanded.blocked ? ' — أودعه لتتمكن من التحصيل' : ''}
         </p>
       )}
 

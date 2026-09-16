@@ -144,7 +144,7 @@ jobs:
 
       - name: فحص الأنواع
         working-directory: supabase/functions
-        run: deno check public-qr/index.ts staff-orders/index.ts payments/index.ts payments-webhook/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/thawani.ts _shared/whatsapp.ts
+        run: deno check public-qr/index.ts staff-orders/index.ts payments/index.ts payments-webhook/index.ts settlements/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/thawani.ts _shared/whatsapp.ts
 
       - name: Lint
         working-directory: supabase/functions
