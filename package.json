@@ -17,7 +17,7 @@
     "test": "pnpm test:unit",
     "test:unit": "vitest run",
     "test:db": "node scripts/run-db-tests.mjs",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/e2e-build.mjs && playwright test",
     "perf:reports": "node scripts/perf-reports.mjs",
     "test:migration": "node scripts/test-migration.mjs",
     "size-limit": "size-limit",

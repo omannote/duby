@@ -7,16 +7,6 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
 
-/*
- * قيم بناء صريحة للاختبار. بلا قيم يعرض التطبيق شاشة «غير مهيّأ» فتفشل كل
- * الاختبارات لسبب غير حقيقي. وهمية ولا تتصل بمشروع فعلي.
- */
-const TEST_ENV = {
-  VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
-  VITE_SUPABASE_ANON_KEY: 'test-anon-key-not-a-real-credential',
-  VITE_APP_VERSION: 'e2e',
-};
-
 /**
  * WebKit مُدرج عمدًا: Safari على iPhone هو المتصفح الذي تعثّر فيه النظام
  * السابق مرتين (BarcodeDetector غير مدعوم، والتخطيط يتضخّم مع لوحة المفاتيح).
@@ -63,25 +53,21 @@ export default defineConfig({
   ],
 
   /*
-   * يُبنى التطبيق هنا بقيم اختبار صريحة بدل الاعتماد على بيئة الغلاف.
-   * بلا قيم يعرض التطبيق شاشة «غير مهيّأ» فتفشل كل الاختبارات لسبب غير حقيقي.
-   * القيم وهمية ولا تتصل بمشروع فعلي — الاختبارات هنا لا تلمس قاعدة بيانات.
+   * تخدم ما بناه scripts/e2e-build.mjs، ولا تبني. القيم مخبوزة في الحزمة
+   * وقت البناء فلا يحتاجها preview، والمهلة تخصّ الصعود وحده لا بناءً كاملًا.
    */
   webServer: [
     {
-      command: 'pnpm --filter @duby/staff build && pnpm --filter @duby/staff preview --port 4173',
+      command: 'pnpm --filter @duby/staff preview --port 4173',
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-      env: TEST_ENV,
+      timeout: 60_000,
     },
     {
-      command:
-        'pnpm --filter @duby/customer build && pnpm --filter @duby/customer preview --port 4174',
+      command: 'pnpm --filter @duby/customer preview --port 4174',
       url: 'http://127.0.0.1:4174',
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-      env: TEST_ENV,
+      timeout: 60_000,
     },
   ],
 });

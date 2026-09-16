@@ -84,8 +84,8 @@ jobs:
       - name: تثبيت المتصفحات
         run: pnpm exec playwright install --with-deps chromium webkit
 
-      - run: pnpm build
-
+      # لا بناء منفصل هنا: globalSetup يبني بقيم الاختبار، والبناء بلا تلك
+      # القيم يُنتج حزمة تعرض «غير مهيّأ» — فبناؤه مرتين كان هدرًا ثم تجاهلًا.
       - run: pnpm test:e2e
 
       - uses: actions/upload-artifact@v4
