@@ -203,6 +203,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # العتبة high لا critical: المتوسطة الباقية في خادم تطوير vitest وحده،
+      # ولا إصدار مُصلَح لها بعد. رفع العتبة يعني بوابة حمراء دائمًا، وبوابة
+      # حمراء دائمًا تُقرأ ضجيجًا فتُتجاهل.
       - name: ثغرات الاعتماديات
         run: pnpm audit --audit-level=high
 
