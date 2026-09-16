@@ -1,0 +1,9 @@
+dist/
+coverage/
+pnpm-lock.yaml
+playwright-report/
+test-results/
+
+# التوثيق مكتوب بالعربية ومنسّق يدويًا. محاذاة Prettier للجداول تحسب الأحرف
+# لا العرض المرئي، فتشوّه النص العربي وتضخّم الفروق بلا فائدة.
+docs/

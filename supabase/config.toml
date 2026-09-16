@@ -1,0 +1,50 @@
+project_id = "duby"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5174"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+
+[storage]
+enabled = true
+file_size_limit = "2MiB"
+
+[functions.public-qr]
+verify_jwt = false
+
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.staff-orders]
+verify_jwt = true
+
+[functions.payments]
+verify_jwt = true
+
+[functions.settlements]
+verify_jwt = true
+
+[functions.admin]
+verify_jwt = true

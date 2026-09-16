@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+
+# البيئة والأسرار — لا يدخل المستودع أي منها (ADR-007)
+.env
+.env.*
+!.env.example
+
+# Supabase المحلي
+supabase/.branches/
+supabase/.temp/
+.supabase/
+
+# الاختبارات
+playwright-report/
+.playwright-cache/
+test-results/
+blob-report/
+
+# محرّرات وأنظمة
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/

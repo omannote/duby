@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: بوابات الجودة
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: فحص الأنواع
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: التنسيق
+        run: pnpm format:check
+
+      # Cloudflare وحده يفسّر _headers، فلا يُكشف الخطأ فيها إلا بعد النشر.
+      # الفحص الساكن هنا يمنعه من الوصول إلى هناك أصلًا.
+      - name: ترويسات الأمن
+        run: pnpm verify:headers
+
+      - name: اختبارات الوحدة
+        run: pnpm test:unit
+
+      - name: بناء الواجهات
+        run: pnpm build
+
+      - name: حجم الحزمة
+        run: pnpm size-limit
+
+  e2e:
+    name: اختبارات المتصفح
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # WebKit إلزامي: Safari على iPhone هو المتصفح الذي تعثّر فيه النظام السابق
+      - name: تثبيت المتصفحات
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - run: pnpm build
+
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  database:
+    name: قاعدة البيانات
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: supabase/setup-cli@v1
+        with: { version: latest }
+
+      - name: تشغيل Supabase محليًا
+        run: supabase start
+
+      - name: تطبيق كل الهجرات من الصفر
+        run: supabase db reset --no-seed
+
+      - name: اختبارات pgTAP
+        run: pnpm test:db
+
+      # ADR-002: الأنواع مولَّدة من المخطط. أي فرق هنا يعني أن هجرة غيّرت
+      # المخطط دون تحديث الأنواع — وهو بالضبط التباعد الذي نمنعه.
+      - name: الأنواع متزامنة مع المخطط
+        run: |
+          pnpm gen:types
+          git diff --exit-code packages/shared/src/db.ts \
+            || (echo "::error::الأنواع المولَّدة قديمة. شغّل pnpm gen:types والتزم بالنتيجة." && exit 1)
+
+  security:
+    name: الأمن
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: فحص الأسرار
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: ثغرات الاعتماديات
+        run: pnpm audit --audit-level=high
+
+      # anon key وحده يُسمح بوصوله للمتصفح. أي مفتاح آخر في حزمة الواجهة
+      # تسريب، لا خطأ تهيئة.
+      - name: لا أسرار في حزمة الواجهة
+        run: |
+          pnpm build
+          # خرائط المصدر تضم شيفرة المكتبات وتعليقاتها، فتُطابق النمط زورًا.
+          # الفحص على ما يُنفَّذ في المتصفح فعلًا.
+          if grep -rEl 'service_role|sk_live|sk_test|wab_live|SUPABASE_SERVICE' \
+               --include='*.js' --include='*.html' --include='*.css' apps/*/dist 2>/dev/null; then
+            echo "::error::مفتاح حساس وُجد في حزمة الواجهة"
+            exit 1
+          fi
+          echo "✓ لا أسرار في الحزم المبنية"
