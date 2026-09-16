@@ -11,6 +11,12 @@ max_rows = 1000
 port = 54322
 major_version = 15
 
+# المسار الافتراضي ./seed.sql، وملفنا في مجلد seed. بلا هذا السطر يمرّ
+# `supabase db reset` بنجاح وهو لا يبذر شيئًا — نجاح صامت أسوأ من فشل.
+[db.seed]
+enabled = true
+sql_paths = ["./seed/seed.sql"]
+
 [studio]
 enabled = true
 port = 54323
@@ -23,8 +29,12 @@ jwt_expiry = 3600
 enable_refresh_token_rotation = true
 enable_signup = false
 
+# هنا true عمدًا، والمنع في [auth] أعلاه. الـCLI يترجم enable_signup=false في
+# هذا القسم إلى GOTRUE_EXTERNAL_EMAIL_ENABLED=false — أي تعطيل موفّر البريد
+# كله لا التسجيل الذاتي وحده، فيُرفض دخول كل موظف بـemail_provider_disabled.
+# والبريد هو المسار الوحيد لدخول الموظفين.
 [auth.email]
-enable_signup = false
+enable_signup = true
 enable_confirmations = true
 
 [storage]

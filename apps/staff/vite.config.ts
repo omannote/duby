@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -7,6 +8,13 @@ import { VitePWA } from 'vite-plugin-pwa';
  * النظام السابق كان ملفًا واحدًا فاضطر إلى السماح بالسكربت المضمّن.
  */
 export default defineConfig({
+  /*
+   * ملف بيئة واحد في جذر المستودع بدل واحد لكل تطبيق: القيم نفسها تخدم
+   * التطبيقين، ونسخة ثانية تعني نسختين تتباعدان. README يقول
+   * `cp .env.example .env.local` في الجذر، وبدون هذا السطر لا يقرأه vite.
+   */
+  envDir: fileURLToPath(new URL('../..', import.meta.url)),
+
   plugins: [
     react(),
     VitePWA({
