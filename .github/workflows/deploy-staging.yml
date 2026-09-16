@@ -19,8 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # بلا version: الإصدار من packageManager في package.json وحده.
+      # تحديده في الاثنين يجعل الإجراء يفشل بـMultiple versions of pnpm.
       - uses: pnpm/action-setup@v4
-        with: { version: 10 }
 
       - uses: actions/setup-node@v4
         with:

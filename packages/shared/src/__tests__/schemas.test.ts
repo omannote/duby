@@ -21,7 +21,12 @@ describe('normalizeOmaniPhone', () => {
 });
 
 describe('normalizeQrToken', () => {
-  const token = '3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b';
+  /*
+   * يُولَّد لا يُكتب حرفيًا: رمز QR اعتماد حقيقي في هذا النظام، وماسح الأسرار
+   * يقرأ سلسلة بهذا الشكل باسم `token` مفتاحًا مسرَّبًا — وهو محقّ في القاعدة.
+   * التوليد يزيل الإنذار الكاذب بلا تعطيل القاعدة لملفات الاختبار.
+   */
+  const token = crypto.randomUUID();
 
   it('يقبل UUID مجردًا', () => {
     expect(normalizeQrToken(token)).toBe(token);
