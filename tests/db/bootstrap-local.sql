@@ -26,6 +26,10 @@ end $$;
 
 grant usage on schema public to anon, authenticated, service_role;
 
+-- الجداول تُنشأ لاحقًا في الهجرات، فتلتقطها الصلاحيات الافتراضية
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+
 -- ── مخطط auth ─────────────────────────────────────────────────────────────
 create schema if not exists auth;
 
@@ -51,7 +55,8 @@ as $$
 $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
-grant select on auth.users to authenticated, service_role;
+grant select on auth.users to authenticated;
+grant all on auth.users to service_role;
 
 -- ── مخطط storage ──────────────────────────────────────────────────────────
 create schema if not exists storage;

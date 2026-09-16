@@ -95,6 +95,22 @@ PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium-*/chrome-linux/chrome pnpm te
 
 9. **أي عطل إنتاج يُصلَح باختبار يفشل أولًا**، ثم إصلاح يجعله يمر.
 
+## وظائف Edge
+
+تُكتب بـDeno وتُنسَّق بـ`deno fmt` وفق `supabase/functions/deno.json`.
+مستثناة من Prettier عمدًا حتى لا تتنازع الأداتان على الملفات نفسها.
+
+الأسرار التي تحتاجها `public-qr` (في أسرار Edge Functions، لا في المستودع):
+
+| السر                       | الغرض                                                                 |
+| -------------------------- | --------------------------------------------------------------------- |
+| `OTP_PEPPER`               | تجزئة رمز التحقق وعنوان الشبكة — ٣٢ محرفًا فأكثر                      |
+| `SMS_PROVIDER`             | `whatsapp_bridge` للإرسال الفعلي؛ أي قيمة أخرى تستخدم مزوّدًا مزيّفًا |
+| `WHATSAPP_BRIDGE_BASE_URL` | عنوان الجسر                                                           |
+| `WHATSAPP_BRIDGE_API_KEY`  | مفتاح الجسر                                                           |
+| `WHATSAPP_OTP_TEMPLATE`    | `order_confirmation_v2` — متغيران إلزامًا                             |
+| `ALLOWED_ORIGINS`          | نطاقات دوبي وحدها                                                     |
+
 ## الهجرات
 
 - للأمام فقط. التراجع هجرة جديدة.

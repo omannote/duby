@@ -23,7 +23,8 @@
     "verify:headers": "node scripts/verify-headers.mjs --file apps/staff/public/_headers apps/customer/public/_headers",
     "db:start": "supabase start",
     "db:reset": "supabase db reset",
-    "check": "pnpm typecheck && pnpm lint && pnpm verify:headers && pnpm test:unit && pnpm build && pnpm size-limit"
+    "check": "pnpm typecheck && pnpm lint && pnpm verify:headers && pnpm test:unit && pnpm build && pnpm size-limit",
+    "check:functions": "cd supabase/functions && deno check public-qr/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/whatsapp.ts && deno lint && deno fmt --check"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

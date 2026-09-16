@@ -127,6 +127,40 @@ jobs:
           git diff --exit-code packages/shared/src/db.ts \
             || (echo "::error::الأنواع المولَّدة قديمة. شغّل pnpm gen:types والتزم بالنتيجة." && exit 1)
 
+  functions:
+    name: وظائف Edge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+
+      - name: فحص الأنواع
+        working-directory: supabase/functions
+        run: deno check public-qr/index.ts _shared/auth.ts _shared/cors.ts _shared/otp.ts _shared/result.ts _shared/whatsapp.ts
+
+      - name: Lint
+        working-directory: supabase/functions
+        run: deno lint
+
+      - name: التنسيق
+        working-directory: supabase/functions
+        run: deno fmt --check
+
+      # الوظيفة تحمل pepper الخاص بـOTP ومفتاح واتساب: أي تسجيل للرمز الصريح
+      # يناقض مبدأ عدم تخزينه
+      - name: لا تسجيل لرمز التحقق
+        working-directory: supabase/functions
+        run: |
+          if grep -nE 'console\.(log|error|warn|info)\([^)]*\bcode\b' public-qr/index.ts | grep -v 'sent.code'; then
+            echo "::error::يبدو أن رمز التحقق يُسجَّل"
+            exit 1
+          fi
+          echo "✓ لا تسجيل لرمز التحقق"
+
   security:
     name: الأمن
     runs-on: ubuntu-latest

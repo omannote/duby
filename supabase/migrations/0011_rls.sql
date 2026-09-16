@@ -37,6 +37,16 @@ grant select on
 -- otp_challenges و order_submissions: لا قراءة لأحد، ولا حتى للموظف
 revoke all on otp_challenges, order_submissions from authenticated;
 
+/*
+ * service_role هو الدور الذي تعمل به وظائف Edge؛ يتجاوز RLS ويحتاج صلاحيات
+ * الجداول صراحةً. Supabase يمنحها افتراضيًا، ونثبّتها هنا حتى تعمل أي بيئة
+ * محلية بنفس السلوك ولا يتباعد الاختبار عن الإنتاج.
+ */
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant usage on schema private to service_role;
+grant all on all tables in schema private to service_role;
+
 -- ── السياسات ──────────────────────────────────────────────────────────────
 -- لا سياسة insert/update/delete لأي جدول: service_role يتجاوز RLS وهو الوحيد
 -- الذي يكتب. غياب السياسات هنا مقصود لا سهو.
