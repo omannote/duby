@@ -1,0 +1,130 @@
+import type { ReportSpec } from './reports-api.js';
+
+/**
+ * تعريف التقارير في مكان واحد: العرض المصدر، وأعمدته، وأدنى دور يراه.
+ * الحارس الحقيقي في قاعدة البيانات (كل عرض يفحص الدور بنفسه)؛ `minRole` هنا
+ * لإخفاء تبويب سيعود فارغًا لا لحماية البيانات.
+ */
+export const REPORT_SPECS: ReportSpec[] = [
+  {
+    key: 'by-status',
+    title: 'الطلبات حسب الحالة',
+    view: 'v_orders_by_status',
+    minRole: 'courier',
+    columns: [
+      { key: 'status', label: 'الحالة' },
+      { key: 'orders_count', label: 'العدد' },
+    ],
+    order: { column: 'orders_count', ascending: false },
+  },
+  {
+    key: 'by-property',
+    title: 'الطلبات حسب العقار',
+    view: 'v_orders_by_property',
+    minRole: 'courier',
+    columns: [
+      { key: 'code', label: 'الرمز' },
+      { key: 'name', label: 'العقار' },
+      { key: 'orders_total', label: 'الإجمالي' },
+      { key: 'orders_active', label: 'نشطة' },
+      { key: 'orders_completed', label: 'مكتملة' },
+      { key: 'orders_cancelled', label: 'ملغاة' },
+      { key: 'revenue', label: 'الإيراد', format: 'amount' },
+    ],
+    order: { column: 'orders_total', ascending: false },
+  },
+  {
+    key: 'stale',
+    title: 'الطلبات المتوقفة',
+    hint: 'طلبات لم تتغيّر حالتها منذ أطول من العتبة المضبوطة.',
+    view: 'v_stale_orders',
+    minRole: 'courier',
+    columns: [
+      { key: 'order_no', label: 'رقم الطلب' },
+      { key: 'status', label: 'الحالة' },
+      { key: 'property_name', label: 'العقار' },
+      { key: 'customer_name', label: 'العميل' },
+      { key: 'hours_in_status', label: 'مدة التوقف', format: 'hours' },
+    ],
+    order: { column: 'hours_in_status', ascending: false },
+    limit: 200,
+  },
+  {
+    key: 'stages',
+    title: 'زمن المراحل',
+    hint: 'محسوب من سجل الحالات ويُحدَّث كل نصف ساعة.',
+    view: 'mv_stage_durations',
+    minRole: 'courier',
+    columns: [
+      { key: 'stage', label: 'المرحلة' },
+      { key: 'sample_size', label: 'عدد العينات' },
+      { key: 'avg_hours', label: 'المتوسط', format: 'hours' },
+      { key: 'median_hours', label: 'الوسيط', format: 'hours' },
+      { key: 'p95_hours', label: 'الشريحة 95', format: 'hours' },
+      { key: 'latest_sample', label: 'آخر عيّنة', format: 'datetime' },
+    ],
+    order: { column: 'avg_hours', ascending: false },
+  },
+  {
+    key: 'funnel',
+    title: 'قمع المسح',
+    hint: 'هبوط نسبة التحويل يعني تعثّرًا في رحلة العميل لا نقصًا في الطلب.',
+    view: 'v_scan_funnel',
+    minRole: 'operator',
+    columns: [
+      { key: 'business_date', label: 'اليوم', format: 'date' },
+      { key: 'scans_total', label: 'المسحات' },
+      { key: 'otp_requested', label: 'طلب رمز' },
+      { key: 'verified', label: 'تحقّق' },
+      { key: 'orders_submitted', label: 'طلبات' },
+      { key: 'rejected', label: 'مرفوضة' },
+      { key: 'conversion_pct', label: 'التحويل', format: 'percent' },
+    ],
+    order: { column: 'business_date', ascending: false },
+    limit: 90,
+  },
+  {
+    key: 'aging',
+    title: 'الفواتير غير المدفوعة',
+    view: 'v_unpaid_aging',
+    minRole: 'operator',
+    columns: [
+      { key: 'order_no', label: 'رقم الطلب' },
+      { key: 'invoice_number', label: 'الفاتورة' },
+      { key: 'invoice_amount', label: 'المبلغ', format: 'amount' },
+      { key: 'property_name', label: 'العقار' },
+      { key: 'days_outstanding', label: 'أيام' },
+      { key: 'age_bucket', label: 'الشريحة' },
+    ],
+    order: { column: 'days_outstanding', ascending: false },
+    limit: 300,
+  },
+  {
+    key: 'revenue',
+    title: 'الإيرادات حسب الطريقة',
+    view: 'v_revenue_by_method',
+    minRole: 'operator',
+    columns: [
+      { key: 'business_date', label: 'اليوم', format: 'date' },
+      { key: 'payment_method', label: 'الطريقة' },
+      { key: 'orders_count', label: 'الطلبات' },
+      { key: 'total', label: 'المجموع', format: 'amount' },
+    ],
+    order: { column: 'business_date', ascending: false },
+    limit: 180,
+  },
+  {
+    key: 'couriers',
+    title: 'أداء المندوبين',
+    hint: 'أداء زميل ليس بيانًا تشغيليًا يوميًا، فهو محصور بالمشرف فأعلى.',
+    view: 'v_courier_performance',
+    minRole: 'manager',
+    columns: [
+      { key: 'courier_name', label: 'المندوب' },
+      { key: 'pickups', label: 'استلامات' },
+      { key: 'deliveries', label: 'تسليمات' },
+      { key: 'cash_collected', label: 'نقد محصّل', format: 'amount' },
+    ],
+    order: { column: 'deliveries', ascending: false },
+  },
+];

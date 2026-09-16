@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ROLE_LABELS } from '@duby/shared';
+import { ROLE_LABELS, atLeast } from '@duby/shared';
 import { APP_VERSION } from './version.js';
 import { isConfigured } from './supabase.js';
 import { signOut, useStaffSession } from './lib/session.js';
@@ -10,8 +10,11 @@ import { Customers } from './screens/Customers.js';
 import { Orders } from './screens/Orders.js';
 import { Cash } from './screens/Cash.js';
 import { NotificationSettings } from './screens/NotificationSettings.js';
+import { Reports } from './screens/Reports.js';
+import { OpsHealth } from './screens/OpsHealth.js';
 
-type Tab = 'orders' | 'cash' | 'customers' | 'properties' | 'notifications' | 'more';
+type Tab =
+  'orders' | 'cash' | 'customers' | 'properties' | 'notifications' | 'reports' | 'health' | 'more';
 
 export function App() {
   const session = useStaffSession();
@@ -76,11 +79,17 @@ export function App() {
         {tab === 'customers' && <Customers role={staff.role} />}
         {tab === 'properties' && <Properties role={staff.role} />}
         {tab === 'notifications' && <NotificationSettings role={staff.role} />}
+        {tab === 'reports' && <Reports role={staff.role} />}
+        {tab === 'health' && <OpsHealth />}
         {tab === 'more' && (
           <section>
             <header className="screen-header">
               <h2>المزيد</h2>
             </header>
+            <button type="button" className="ghost wide" onClick={() => setTab('reports')}>
+              التقارير
+            </button>
+
             <button type="button" className="ghost wide" onClick={() => setTab('notifications')}>
               إشعارات الحالات
             </button>
@@ -88,6 +97,13 @@ export function App() {
             <button type="button" className="ghost wide" onClick={() => setTab('properties')}>
               العقارات
             </button>
+
+            {/* لوحة الصحة لمدير النظام: الحارس الحقيقي في fn_ops_health */}
+            {atLeast(staff.role, 'admin') && (
+              <button type="button" className="ghost wide" onClick={() => setTab('health')}>
+                الصحة التشغيلية
+              </button>
+            )}
 
             <dl className="facts">
               <dt>الموظف</dt>
@@ -114,6 +130,9 @@ export function App() {
         </button>
         <button type="button" data-active={tab === 'customers'} onClick={() => setTab('customers')}>
           العملاء
+        </button>
+        <button type="button" data-active={tab === 'reports'} onClick={() => setTab('reports')}>
+          التقارير
         </button>
         <button type="button" data-active={tab === 'more'} onClick={() => setTab('more')}>
           المزيد

@@ -202,3 +202,57 @@ test.describe('الإشعارات — المرحلة الخامسة', () => {
     expect(bundle).not.toMatch(/send-notification/);
   });
 });
+
+test.describe('التقارير — المرحلة السادسة', () => {
+  test('عناوين التقارير وزرّ التصدير في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('الطلبات حسب العقار');
+    expect(bundle).toContain('قمع المسح');
+    expect(bundle).toContain('الفواتير غير المدفوعة');
+    expect(bundle).toContain('أداء المندوبين');
+    expect(bundle).toContain('تصدير CSV');
+  });
+
+  /*
+   * تحييد حقن الصيغ منطق أمني داخل دالة صغيرة — وهو بالضبط ما قد يسقط عند
+   * التصغير أو هزّ الشجرة. الاختبار يتحقق منه في الحزمة المبنيّة لا في المصدر.
+   */
+  test('تحييد حقن صيغ CSV ناجٍ من التصغير', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toMatch(/\[=\+\\?-@/);
+    // BOM محفوظ حرفيًا: بدونه تُقرأ العربية مشوّهة في Excel
+    expect(bundle).toMatch(/\\uFEFF|\uFEFF/);
+  });
+
+  test('لوحة الصحة التشغيلية في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('الصحة التشغيلية');
+    expect(bundle).toContain('طابور الإشعارات');
+    expect(bundle).toContain('المهام المجدولة');
+    expect(bundle).toContain('fn_ops_health');
+  });
+});

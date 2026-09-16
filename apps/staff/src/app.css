@@ -786,3 +786,104 @@ button.wide {
   width: 100%;
   margin-bottom: 0.5rem;
 }
+
+/* ── التقارير ───────────────────────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.kpi-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.kpi-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.kpi[data-warn='true'] .kpi-value {
+  color: #b54708;
+}
+
+.kpi[data-bad='true'] {
+  border-color: var(--danger);
+}
+
+.kpi[data-bad='true'] .kpi-value {
+  color: var(--danger);
+}
+
+.report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.report-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.report-actions button {
+  min-height: 36px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+/* الجدول يمرَّر أفقيًا بدل أن يكسر التخطيط على شاشة الجوال */
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.5rem 0.7rem;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid #f0f1f0;
+}
+
+.report-table th {
+  position: sticky;
+  top: 0;
+  background: #f3f4f6;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: none;
+}
