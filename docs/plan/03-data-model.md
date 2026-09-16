@@ -8,7 +8,7 @@ PostgreSQL 15. كل الجداول في مخطط `public` مع RLS مفعّل، 
 ## 1. الأنواع المعدودة
 
 ```sql
-create type staff_role      as enum ('operator', 'manager', 'admin');
+create type staff_role      as enum ('courier', 'operator', 'manager', 'admin');
 create type profile_status  as enum ('incomplete', 'complete');
 
 create type order_status as enum (
@@ -27,6 +27,7 @@ create type payment_method  as enum ('thawani', 'cash_on_delivery', 'manual');
 create type photo_kind      as enum ('intake', 'pickup', 'delivery');
 create type otp_state       as enum ('pending','sent','verified','failed','blocked','expired','superseded');
 create type outbox_state    as enum ('pending','sending','sent','failed','skipped','dead');
+create type settlement_state as enum ('open','submitted','verified','disputed');
 ```
 
 > **تصحيح مقصود**: `delivered` حُذفت. في النظام الحالي كانت تُستخدم قبل التسليم
@@ -74,6 +75,18 @@ $$;
 
 الموظف المعطَّل تعيد له الدالة `null` ← كل السياسات ترفضه. تعطيل الحساب يصبح
 فوريًا وفعّالًا بلا اعتماد على الواجهة.
+
+**ترتيب الأدوار** — لتبسيط فحوص «فأعلى»:
+
+```sql
+create or replace function role_rank(r staff_role) returns int
+language sql immutable as $$
+  select case r when 'courier' then 1 when 'operator' then 2
+                when 'manager' then 3 when 'admin' then 4 end
+$$;
+
+-- الاستخدام: if role_rank(auth_role()) < role_rank('operator') then …
+```
 
 ### 2.2 `properties` — العقارات
 
@@ -434,7 +447,155 @@ create index payment_events_order_idx on payment_events(order_id, created_at des
 الثلاثة كانت مفقودة في النظام الحالي. `safe_payload` يحفظ الحقول غير الحساسة
 فقط من استجابة المزود.
 
-### 2.12 `notification_outbox` — طابور الإشعارات
+### 2.12 `cash_settlements` و `cash_collections` — التسوية النقدية
+
+```sql
+create table cash_settlements (
+  id               uuid primary key default gen_random_uuid(),
+  courier_id       uuid not null references staff(id) on delete restrict,
+  business_date    date not null,
+  state            settlement_state not null default 'open',
+
+  expected_amount  numeric(12,3) not null default 0,   -- محسوب من النظام
+  declared_amount  numeric(12,3),                      -- ما أعلنه المندوب
+  counted_amount   numeric(12,3),                      -- ما عدّه المدقّق
+  variance         numeric(12,3)
+                   generated always as (counted_amount - expected_amount) stored,
+
+  opened_at        timestamptz not null default now(),
+  submitted_at     timestamptz,
+  verified_at      timestamptz,
+  verified_by      uuid references staff(id),
+  approved_by      uuid references staff(id),          -- لاعتماد فرق خارج السماح
+  approved_at      timestamptz,
+
+  variance_reason  text,
+  notes            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+
+  constraint cash_settlement_one_per_day unique (courier_id, business_date)
+);
+```
+
+#### القيود — ضوابط الرقابة المالية
+
+```sql
+-- لا يعتمد أحد تسويته هو  ← أهم ضابط في هذا الجدول
+alter table cash_settlements add constraint cash_settlement_no_self_verify
+  check (verified_by is null or verified_by <> courier_id);
+
+alter table cash_settlements add constraint cash_settlement_no_self_approve
+  check (approved_by is null or approved_by <> courier_id);
+
+-- التقديم يتطلب مبلغًا معلنًا
+alter table cash_settlements add constraint cash_settlement_submitted_needs_declared
+  check (state = 'open' or declared_amount is not null);
+
+-- الاعتماد يتطلب عدًّا ومدقّقًا ووقتًا
+alter table cash_settlements add constraint cash_settlement_verified_complete
+  check (state <> 'verified' or (
+    counted_amount is not null and verified_by is not null and verified_at is not null));
+
+-- فرق غير صفري يتطلب سببًا
+alter table cash_settlements add constraint cash_settlement_variance_needs_reason
+  check (state <> 'verified' or variance = 0
+         or length(btrim(coalesce(variance_reason,''))) >= 3);
+
+-- فرق خارج حد السماح يتطلب اعتماد manager فأعلى
+alter table cash_settlements add constraint cash_settlement_large_variance_needs_approval
+  check (state <> 'verified' or abs(coalesce(variance,0)) <= tolerance_limit()
+         or approved_by is not null);
+
+create index cash_settlements_courier_idx on cash_settlements(courier_id, business_date desc);
+create index cash_settlements_open_idx    on cash_settlements(business_date)
+  where state in ('open','submitted','disputed');
+```
+
+`tolerance_limit()` تقرأ `app_settings` بمفتاح `cash.variance_tolerance_omr`
+(افتراضيًا 0.100 ر.ع).
+
+```sql
+create table cash_collections (
+  id             uuid primary key default gen_random_uuid(),
+  order_id       uuid not null unique references orders(id) on delete restrict,
+  courier_id     uuid not null references staff(id) on delete restrict,
+  settlement_id  uuid references cash_settlements(id) on delete restrict,
+  amount         numeric(12,3) not null check (amount >= 0.100),
+  business_date  date not null,
+  collected_at   timestamptz not null default now(),
+
+  reversed_at    timestamptz,
+  reversed_by    uuid references staff(id),
+  reverse_reason text,
+
+  constraint cash_collection_reverse_complete check (
+    reversed_at is null
+    or (reversed_by is not null and length(btrim(coalesce(reverse_reason,''))) >= 3))
+);
+
+create index cash_collections_settlement_idx on cash_collections(settlement_id);
+create index cash_collections_courier_idx    on cash_collections(courier_id, business_date desc);
+create unique index cash_collections_active_order_idx
+  on cash_collections(order_id) where reversed_at is null;
+```
+
+#### حساب يوم العمل
+
+```sql
+create or replace function business_date_of(ts timestamptz default now())
+returns date language sql stable as $$
+  select (ts at time zone 'Asia/Muscat')::date
+$$;
+```
+
+التوقيت المحلي مهم: تسليم الساعة 9 مساءً بتوقيت مسقط هو 17:00 UTC من نفس اليوم،
+لكن تسليم الساعة 1 صباحًا هو 21:00 UTC من **اليوم السابق**. حساب يوم العمل
+بـUTC كان سيوزّع تحصيلات الليلة الواحدة على يومين.
+
+#### علاقة التحصيل بالتسوية
+
+```
+تسجيل دفع نقدي
+  └─ fn_record_cash_payment (معاملة واحدة)
+       ├─ فحص: لا تسوية متأخرة تتجاوز الحد
+       ├─ orders: payment_status=paid, method=cash_on_delivery, paid_at, paid_recorded_by
+       ├─ cash_settlements: فتح تسوية اليوم إن لم تكن مفتوحة (open)
+       ├─ cash_collections: قيد جديد مرتبط بالتسوية
+       ├─ تحديث expected_amount في التسوية
+       └─ payment_events + audit_logs
+```
+
+#### آلة حالات التسوية
+
+```
+open ──(المندوب يعلن)──► submitted ──(operator+ يعدّ)──┬─► verified
+                                                       │
+                                                       └─► disputed ──(manager+)──► verified
+```
+
+قواعد:
+- `open` ← تُفتح تلقائيًا، وتتراكم فيها التحصيلات طوال اليوم.
+- `submitted` ← بعد الإعلان، **لا تُقبل فيها تحصيلات جديدة**؛ تحصيل لاحق يفتح
+  تسوية اليوم التالي.
+- `verified` ← نهائية. محفّز يمنع أي `UPDATE` عليها.
+- `disputed` ← فرق خارج السماح ينتظر اعتماد `manager` فأعلى.
+
+```sql
+create or replace function trg_settlement_final_lock() returns trigger
+language plpgsql as $$
+begin
+  if old.state = 'verified' then
+    raise exception 'settlement_locked' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+```
+
+التصحيح بعد الاعتماد لا يتم بتعديل التسوية، بل بقيد `cash_collections` تصحيحي
+في تسوية لاحقة — فيبقى الأثر المحاسبي كاملًا.
+
+### 2.13 `notification_outbox` — طابور الإشعارات
 
 ```sql
 create table private.notification_outbox (
@@ -462,7 +623,7 @@ create index outbox_due_idx on private.notification_outbox(next_attempt_at)
 `params` يحوي النص النهائي فقط — **لا يحوي رمز OTP** إطلاقًا (يُمرَّر مباشرة
 دون المرور بالطابور؛ التفصيل في [08-integrations.md](08-integrations.md)).
 
-### 2.13 `order_status_settings` — إعدادات الإشعارات
+### 2.14 `order_status_settings` — إعدادات الإشعارات
 
 ```sql
 create table order_status_settings (
@@ -477,7 +638,7 @@ create table order_status_settings (
 );
 ```
 
-### 2.14 `audit_logs` — سجل التدقيق
+### 2.15 `audit_logs` — سجل التدقيق
 
 ```sql
 create table private.audit_logs (
@@ -502,7 +663,7 @@ create index audit_actor_idx  on private.audit_logs(actor_id, created_at desc);
 يُكتب بمحفّزات على الجداول الحساسة. مخطط `private` = لا وصول من الواجهة أبدًا؛
 القراءة تمر عبر دالة مقيّدة بـ`admin`.
 
-### 2.15 `app_settings`
+### 2.16 `app_settings`
 
 ```sql
 create table app_settings (
@@ -515,7 +676,14 @@ create table app_settings (
 ```
 
 قيم مثل `otp.ttl_seconds`, `otp.max_per_hour`, `photos.retention_days`,
-`orders.stale_alert_hours`.
+`orders.stale_alert_hours`، وللتسوية النقدية:
+
+| المفتاح | الافتراضي | المعنى |
+|---|---|---|
+| `cash.variance_tolerance_omr` | `0.100` | حد السماح للفرق قبل اعتباره متنازعًا عليه |
+| `cash.max_unsettled_days` | `2` | بعده يُمنع المندوب من تحصيل نقدي جديد |
+| `cash.business_day_start` | `"00:00"` | بداية يوم العمل بتوقيت مسقط |
+| `cash.require_daily_close` | `true` | تنبيه عند انتهاء اليوم بتسوية مفتوحة |
 
 ---
 
@@ -540,6 +708,8 @@ alter table order_photos       enable row level security;
 alter table order_status_history enable row level security;
 alter table payments           enable row level security;
 alter table payment_events     enable row level security;
+alter table cash_settlements   enable row level security;
+alter table cash_collections   enable row level security;
 alter table order_status_settings enable row level security;
 alter table app_settings       enable row level security;
 ```
@@ -560,6 +730,8 @@ alter table app_settings       enable row level security;
 | `order_status_history` | ✗ | قراءة | لا كتابة لأحد |
 | `payments` | ✗ | قراءة | |
 | `payment_events` | ✗ | قراءة لـ`manager`+ | |
+| `cash_settlements` | ✗ | `courier` يقرأ تسوياته؛ `operator`+ يقرأ الكل | |
+| `cash_collections` | ✗ | `courier` يقرأ تحصيلاته؛ `operator`+ يقرأ الكل | |
 | `order_status_settings` | ✗ | قراءة | الكتابة لـ`admin` عبر دالة |
 | `app_settings` | ✗ | قراءة لـ`admin` | |
 | `private.*` | ✗ | ✗ | لا وصول إطلاقًا |
@@ -572,6 +744,14 @@ create policy orders_read_staff on orders
   using (auth_role() is not null);
 
 -- لا سياسة insert/update/delete على orders لأي دور
+
+-- المندوب يرى تسوياته فقط؛ من فوقه يرى الجميع
+create policy settlements_read on cash_settlements
+  for select to authenticated
+  using (
+    role_rank(auth_role()) >= role_rank('operator')
+    or courier_id = auth_staff_id()
+  );
 ```
 
 غياب سياسة الكتابة مقصود: `service_role` يتجاوز RLS، وهو الوحيد الذي يكتب.
@@ -602,7 +782,11 @@ insert into storage.buckets (id, name, public) values ('order-photos','order-pho
 | `fn_confirm_field_step(order_id, step, qr_token, photo_path, size, sha256, actor)` | **الاستلام والتسليم** — ذرّية كاملة |
 | `fn_cancel_order(order_id, reason, actor)` | إلغاء مع سبب |
 | `fn_create_invoice(order_id, number, amount, actor)` | فاتورة + انتقال إلى `out_for_delivery` |
-| `fn_record_cash_payment(order_id, actor)` | دفع نقدي — `manager`+ |
+| `fn_record_cash_payment(order_id, actor)` | دفع نقدي — يسجّله المندوب، ويُقيَّد في تسويته |
+| `fn_submit_settlement(settlement_id, declared_amount, notes)` | المندوب يعلن ما بحوزته |
+| `fn_verify_settlement(settlement_id, counted_amount, reason)` | `operator`+ يعدّ ويعتمد — يرفض اعتماد الذات |
+| `fn_approve_variance(settlement_id, reason)` | `manager`+ يعتمد فرقًا خارج السماح |
+| `fn_reverse_cash_collection(collection_id, reason)` | إلغاء تحصيل قبل الاعتماد فقط |
 | `fn_apply_payment_webhook(session_id, provider_status, payload)` | تأكيد الدفع من المزود |
 | `fn_reverse_payment(order_id, reason, actor)` | إلغاء دفع — `admin` فقط |
 
@@ -618,6 +802,8 @@ insert into storage.buckets (id, name, public) values ('order-photos','order-pho
 | `trg_orders_guard_transition` | `orders` | رفض أي انتقال غير مسموح في مصفوفة الحالات |
 | `trg_orders_final_lock` | `orders` | رفض أي تعديل على طلب `completed` عدا `updated_at` |
 | `trg_orders_notify_outbox` | `orders` | إدراج إشعار في Outbox عند تغيّر الحالة إن كان مفعّلًا |
+| `trg_settlement_final_lock` | `cash_settlements` | رفض أي تعديل على تسوية `verified` |
+| `trg_settlement_recalc` | `cash_collections` | إعادة حساب `expected_amount` عند كل تحصيل أو إلغاء |
 | `trg_audit_*` | الجداول الحساسة | كتابة `private.audit_logs` |
 | `trg_touch_updated_at` | الجميع | تحديث `updated_at` |
 
@@ -636,6 +822,7 @@ insert into storage.buckets (id, name, public) values ('order-photos','order-pho
 | `otp_challenges` | 90 يومًا | حذف |
 | `scan_events` غير المكتملة | 180 يومًا | حذف |
 | الطلبات والفواتير والمدفوعات | 7 سنوات | احتفاظ (متطلب محاسبي) |
+| التسويات النقدية والتحصيلات | 7 سنوات | احتفاظ (متطلب محاسبي) |
 | `order_status_history` | عمر الطلب | احتفاظ |
 | `audit_logs` | سنتان | أرشفة ثم حذف |
 

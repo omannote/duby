@@ -55,6 +55,11 @@
 | `provider_error` | عطل عند مزود خارجي |
 | `forbidden` | صلاحية غير كافية |
 | `photo_required` | الصورة إلزامية ومفقودة |
+| `unsettled_cash` | المندوب عليه تسوية متأخرة — لا تحصيل جديد |
+| `settlement_locked` | التسوية معتمدة ولا تقبل تعديلًا |
+| `settlement_closed` | التسوية مُعلنة ولا تقبل تحصيلات جديدة |
+| `self_verification` | لا يجوز اعتماد تسويتك أنت |
+| `variance_needs_approval` | الفرق خارج حد السماح ويحتاج اعتماد `manager`+ |
 | `photo_rejected` | الصورة رُفضت (حجم/نوع/بصمة) |
 | `server_error` | عطل غير متوقع — مصحوب دائمًا بـ`request_id` |
 
@@ -254,13 +259,30 @@
 
 ### `POST /cash`
 
+يسجّله **المندوب** الذي استلم المبلغ. متاح لكل الأدوار من `courier` فأعلى.
+
 ```jsonc
 { "order_id": "…" }
-→ { "ok": true, "data": { "order": { "payment_status": "paid",
-                                      "payment_method": "cash_on_delivery" } } }
+→ { "ok": true, "data": {
+      "order": { "payment_status": "paid", "payment_method": "cash_on_delivery" },
+      "settlement": { "id": "…", "business_date": "2026-09-16",
+                      "expected_amount": 18.750, "collections_count": 4 } } }
 ```
 
-`manager` فأعلى. `operator` يحصل على `forbidden`.
+الاستجابة تعيد حالة التسوية بعد القيد — فيرى المندوب فورًا كم أصبح بذمته اليوم.
+
+الأخطاء: `unsettled_cash` (تسوية متأخرة تتجاوز الحد), `invalid_transition`,
+`order_not_found`
+
+### `POST /cash/reverse`
+
+```jsonc
+{ "collection_id": "…", "reason": "خطأ في المبلغ" }
+```
+
+متاح للمندوب نفسه في نفس اليوم، ولـ`operator`+ دائمًا — **قبل اعتماد التسوية فقط**.
+
+الأخطاء: `settlement_locked`, `forbidden`, `invalid_input`
 
 ### `POST /reverse`
 
@@ -272,7 +294,100 @@
 
 ---
 
-## 5. `payments-webhook` — بلا JWT، بتوقيع
+## 5. `settlements` — JWT إلزامي
+
+### `GET /settlements/mine`
+
+تسويات المستدعي. متاح لكل الأدوار.
+
+```jsonc
+→ { "ok": true, "data": { "settlements": [{
+      "id": "…", "business_date": "2026-09-16", "state": "open",
+      "expected_amount": 18.750, "collections_count": 4,
+      "declared_amount": null, "counted_amount": null, "variance": null }]}}
+```
+
+### `POST /settlements/:id/submit`
+
+المندوب يعلن ما بحوزته فعلًا.
+
+```jsonc
+{ "declared_amount": 18.750, "notes": "" }
+→ { "ok": true, "data": { "settlement": { "state": "submitted",
+                                          "expected_amount": 18.750,
+                                          "declared_amount": 18.750 }}}
+```
+
+- المستدعي يجب أن يكون صاحب التسوية.
+- بعدها لا تُقبل تحصيلات جديدة فيها — تحصيل لاحق يفتح تسوية اليوم التالي.
+
+الأخطاء: `forbidden`, `settlement_locked`, `invalid_input`
+
+### `GET /settlements`
+
+قائمة التسويات مع تصفية. `operator` فأعلى.
+
+```
+?business_date=2026-09-16&state=submitted&courier_id=…
+```
+
+### `POST /settlements/:id/verify`
+
+`operator` فأعلى يعدّ النقد ويعتمد.
+
+```jsonc
+// طلب
+{ "counted_amount": 18.500, "variance_reason": "عجز 0.250 — فكّة ناقصة" }
+
+// نجاح: الفرق صفر أو ضمن السماح
+{ "ok": true, "data": { "settlement": {
+    "state": "verified", "expected_amount": 18.750,
+    "counted_amount": 18.500, "variance": -0.250,
+    "verified_by": "…", "verified_at": "…" }}}
+
+// الفرق خارج السماح
+{ "ok": true, "data": { "settlement": { "state": "disputed", "variance": -3.500 },
+                        "next": "requires_manager_approval" } }
+```
+
+**ضمانات العقد**:
+
+1. `verified_by = courier_id` ← `self_verification` مرفوض في قاعدة البيانات.
+2. `expected_amount` لا يُقبل من الطلب — يُحسب من `cash_collections`.
+3. `variance` عمود محسوب، لا يُرسل ولا يُكتب.
+4. فرق غير صفري بلا سبب ← `invalid_input`.
+5. التسوية `verified` نهائية — أي محاولة تعديل ← `settlement_locked`.
+
+الأخطاء: `self_verification`, `settlement_locked`, `forbidden`, `invalid_input`
+
+### `POST /settlements/:id/approve-variance`
+
+`manager` فأعلى، للتسويات `disputed`.
+
+```jsonc
+{ "reason": "عُدّ بحضور المشرف — خصم من مستحقات المندوب" }
+→ { "ok": true, "data": { "settlement": { "state": "verified", "approved_by": "…" }}}
+```
+
+لا يجوز للمعتمِد أن يكون المندوب نفسه — مفروض بقيد.
+
+### `GET /settlements/pending-cash`
+
+النقد غير المسوّى لكل مندوب حسب العمر. `operator` فأعلى.
+
+```jsonc
+→ { "ok": true, "data": { "couriers": [{
+      "courier_id": "…", "name": "…",
+      "open_settlements": 1, "oldest_business_date": "2026-09-15",
+      "pending_amount": 18.750, "days_overdue": 1, "blocked": false }]}}
+```
+
+`blocked: true` يعني أن المندوب تجاوز `cash.max_unsettled_days` ولا يستطيع
+تسجيل تحصيل جديد.
+
+---
+
+## 6. `payments-webhook` — بلا JWT، بتوقيع
 
 ### `POST /thawani`
 
@@ -284,7 +399,7 @@
 
 ---
 
-## 6. `admin` — JWT إلزامي، دور `admin`
+## 7. `admin` — JWT إلزامي، دور `admin`
 
 | النقطة | الوصف |
 |---|---|
@@ -298,7 +413,7 @@
 
 ---
 
-## 7. `notifications` — داخلية
+## 8. `notifications` — داخلية
 
 تُستدعى من `pg_cron` كل دقيقة. لا يمكن استدعاؤها من الإنترنت.
 
@@ -312,7 +427,7 @@
 
 ---
 
-## 8. القراءة المباشرة من PostgREST
+## 9. القراءة المباشرة من PostgREST
 
 الواجهة تقرأ الجداول مباشرة عبر عميل Supabase (محكومة بـRLS) ولا تمر بوظائف.
 هذا يقلّل الاستدعاءات ويستفيد من الفلترة والترقيم الجاهزين.
@@ -339,7 +454,7 @@ select * from order_status_history where order_id = $1 order by changed_at;
 
 ---
 
-## 9. الإصدارات والتوافق
+## 10. الإصدارات والتوافق
 
 - كل وظيفة تقرأ `X-App-Version`. إن كان أقدم من الحد الأدنى المدعوم:
   `{"ok":false,"code":"app_outdated"}` والواجهة تعرض شاشة تحديث إجباري.

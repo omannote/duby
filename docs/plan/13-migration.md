@@ -70,7 +70,7 @@ end
 يتبع اعتماديات المفاتيح الأجنبية:
 
 ```
-1. staff             ← من staff_profiles + auth.users
+1. staff             ← من staff_profiles + auth.users (مع إعادة تصنيف الأدوار — D0)
 2. properties
 3. customers         ← مع تعيين عقار للعميل اليتيم
 4. customer_qr_tokens ← من customers.qr_token (رمز فعّال واحد لكل عميل)
@@ -80,6 +80,7 @@ end
 8. order_photos      ← من حقول المسارات في orders
 9. order_status_history ← ما يمكن استنتاجه من الطوابع الزمنية
 10. payments + payment_events
+10ب. cash_settlements + cash_collections ← من الطلبات المدفوعة نقدًا
 11. order_status_settings
 12. صور Storage       ← نسخ بين الحاويات
 ```
@@ -90,6 +91,7 @@ end
 
 | # | الحالة | الخيارات | التوصية |
 |---|---|---|---|
+| D0 | **دور كل موظف حالي** | الكل `operator` / تصنيفهم حسب عملهم الفعلي | تصنيفهم يدويًا: من يعمل ميدانيًا ويستلم النقد ← `courier`؛ من يدقّق ويتابع ← `operator`. **يجب وجود `operator` واحد على الأقل ليس مندوبًا** وإلا تعذّر اعتماد أي تسوية |
 | D1 | عميل بلا عقار | تعيين عقار افتراضي / إنشاء عقار «غير محدد» / تعطيله | تعيين العقار الصحيح يدويًا — عميل واحد فقط |
 | D2 | عملاء `incomplete` قدامى | ترحيلهم كما هم / تعطيلهم | ترحيلهم — رموزهم قد تكون مطبوعة وموزّعة |
 | D3 | تحديات OTP الفاشلة الست | ترحيلها للتحليل / تجاهلها | تجاهلها — بيانات اختبار على الأرجح |
@@ -174,6 +176,35 @@ select status, count(*) from orders
 ```
 
 الترحيل لا يُعتمد إلا إذا كانت كل الأعداد متطابقة والشذوذ صفرًا.
+
+---
+
+## 5ب. ترحيل النقد التاريخي
+
+الطلبات القديمة المدفوعة `cash_on_delivery` لا تملك تحصيلات ولا تسويات — الجدولان
+جديدان. الخيار الموصى به:
+
+```sql
+-- تسوية افتتاحية واحدة لكل مندوب، مغلقة ومعتمدة، بفرق صفر
+insert into cash_settlements (courier_id, business_date, state,
+                              expected_amount, declared_amount, counted_amount,
+                              verified_by, verified_at, notes)
+select paid_recorded_by, '<تاريخ الترحيل>'::date, 'verified',
+       sum(invoice_amount), sum(invoice_amount), sum(invoice_amount),
+       '<معرّف المدير>', now(),
+       'تسوية افتتاحية — نقد مُحصَّل قبل تفعيل نظام التسوية، سُوّي خارج النظام'
+  from orders
+ where payment_method = 'cash_on_delivery' and payment_status = 'paid'
+ group by paid_recorded_by;
+```
+
+ثم تُربط بها `cash_collections` المقابلة.
+
+**لماذا مغلقة ومعتمدة**: النقد القديم سُلِّم فعلًا خارج النظام. لو رُحِّل مفتوحًا
+لبدأ كل مندوب بذمة وهمية، ولحُجب عن التحصيل فور الإطلاق.
+
+> استثناء لقاعدة «لا اعتماد ذاتي»: هذه التسويات يعتمدها المدير في سياق الترحيل،
+> ويجب ألا يكون هو نفسه المندوب في أي منها. إن كان — يعتمدها `admin` آخر.
 
 ---
 
