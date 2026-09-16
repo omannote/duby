@@ -24,10 +24,11 @@ create type order_status as enum (
 
 create type payment_status  as enum ('unpaid', 'paid', 'refunded');
 create type payment_method  as enum ('thawani', 'cash_on_delivery', 'manual');
-create type photo_kind      as enum ('intake', 'pickup', 'delivery');
+create type photo_kind      as enum ('intake', 'pickup', 'delivery', 'cash_handover');
 create type otp_state       as enum ('pending','sent','verified','failed','blocked','expired','superseded');
 create type outbox_state    as enum ('pending','sending','sent','failed','skipped','dead');
-create type settlement_state as enum ('open','submitted','verified','disputed');
+create type settlement_state as enum ('open','handed_over','verified','disputed');
+create type handover_method  as enum ('bank_deposit','office_handover','safe_drop','transfer');
 ```
 
 > **تصحيح مقصود**: `delivered` حُذفت. في النظام الحالي كانت تُستخدم قبل التسليم
@@ -458,16 +459,28 @@ create table cash_settlements (
 
   expected_amount  numeric(12,3) not null default 0,   -- محسوب من النظام
   declared_amount  numeric(12,3),                      -- ما أعلنه المندوب
-  counted_amount   numeric(12,3),                      -- ما عدّه المدقّق
+  confirmed_amount numeric(12,3),                      -- ما أكّده المدقّق من الإثبات
   variance         numeric(12,3)
-                   generated always as (counted_amount - expected_amount) stored,
+                   generated always as (confirmed_amount - expected_amount) stored,
 
+  -- التسليم الموثَّق
+  handover_method    handover_method,
+  handover_reference text,                             -- رقم إيصال أو تحويل
+  handover_photo_id  uuid references order_photos(id), -- إثبات التسليم
+  handover_at        timestamptz,
+  handover_note      text,
+
+  -- الاعتماد عن بُعد
   opened_at        timestamptz not null default now(),
-  submitted_at     timestamptz,
   verified_at      timestamptz,
   verified_by      uuid references staff(id),
-  approved_by      uuid references staff(id),          -- لاعتماد فرق خارج السماح
+  approved_by      uuid references staff(id),          -- لفرق خارج السماح
   approved_at      timestamptz,
+
+  -- المطابقة البنكية (لاحقة واختيارية)
+  bank_reference   text,
+  bank_matched_at  timestamptz,
+  bank_matched_by  uuid references staff(id),
 
   variance_reason  text,
   notes            text,
@@ -488,14 +501,22 @@ alter table cash_settlements add constraint cash_settlement_no_self_verify
 alter table cash_settlements add constraint cash_settlement_no_self_approve
   check (approved_by is null or approved_by <> courier_id);
 
--- التقديم يتطلب مبلغًا معلنًا
-alter table cash_settlements add constraint cash_settlement_submitted_needs_declared
-  check (state = 'open' or declared_amount is not null);
+-- التسليم يتطلب طريقة ومبلغًا معلنًا ووقتًا
+alter table cash_settlements add constraint cash_settlement_handover_complete
+  check (state = 'open' or (
+    declared_amount is not null and handover_method is not null
+    and handover_at is not null));
 
--- الاعتماد يتطلب عدًّا ومدقّقًا ووقتًا
+-- الإيداع البنكي والتحويل يتطلبان إثباتًا مصوَّرًا
+alter table cash_settlements add constraint cash_settlement_deposit_needs_proof
+  check (handover_method is null
+         or handover_method not in ('bank_deposit','transfer')
+         or handover_photo_id is not null);
+
+-- الاعتماد يتطلب مبلغًا مؤكَّدًا ومدقّقًا ووقتًا
 alter table cash_settlements add constraint cash_settlement_verified_complete
   check (state <> 'verified' or (
-    counted_amount is not null and verified_by is not null and verified_at is not null));
+    confirmed_amount is not null and verified_by is not null and verified_at is not null));
 
 -- فرق غير صفري يتطلب سببًا
 alter table cash_settlements add constraint cash_settlement_variance_needs_reason
@@ -507,10 +528,18 @@ alter table cash_settlements add constraint cash_settlement_large_variance_needs
   check (state <> 'verified' or abs(coalesce(variance,0)) <= tolerance_limit()
          or approved_by is not null);
 
-create index cash_settlements_courier_idx on cash_settlements(courier_id, business_date desc);
-create index cash_settlements_open_idx    on cash_settlements(business_date)
-  where state in ('open','submitted','disputed');
+create index cash_settlements_courier_idx  on cash_settlements(courier_id, business_date desc);
+create index cash_settlements_unhanded_idx on cash_settlements(business_date)
+  where state = 'open';
+create index cash_settlements_pending_idx  on cash_settlements(handover_at)
+  where state in ('handed_over','disputed');
+create index cash_settlements_unmatched_idx on cash_settlements(verified_at)
+  where bank_matched_at is null and handover_method in ('bank_deposit','transfer');
 ```
+
+> **صورة الإثبات تمر بنفس مسار صور الطلبات**: حاوية خاصة، رابط موقّع، وبصمة
+> `sha256` فريدة. البصمة هنا ليست تفصيلًا — هي ما يمنع إعادة استخدام إيصال
+> إيداع قديم لإقفال يوم جديد.
 
 `tolerance_limit()` تقرأ `app_settings` بمفتاح `cash.variance_tolerance_omr`
 (افتراضيًا 0.100 ر.ع).
@@ -558,7 +587,8 @@ $$;
 ```
 تسجيل دفع نقدي
   └─ fn_record_cash_payment (معاملة واحدة)
-       ├─ فحص: لا تسوية متأخرة تتجاوز الحد
+       ├─ فحص: لا تسوية **غير مسلَّمة** تتجاوز الحد
+       │    (التأخير في الاعتماد لا يحجب المندوب — ليس ذنبه)
        ├─ orders: payment_status=paid, method=cash_on_delivery, paid_at, paid_recorded_by
        ├─ cash_settlements: فتح تسوية اليوم إن لم تكن مفتوحة (open)
        ├─ cash_collections: قيد جديد مرتبط بالتسوية
@@ -569,24 +599,35 @@ $$;
 #### آلة حالات التسوية
 
 ```
-open ──(المندوب يعلن)──► submitted ──(operator+ يعدّ)──┬─► verified
-                                                       │
-                                                       └─► disputed ──(manager+)──► verified
+open ──(المندوب يسلّم ويوثّق)──► handed_over ──(operator+ يطابق الإثبات)──┬─► verified
+                                                                          │
+                                                                          └─► disputed ──(manager+)──► verified
 ```
 
 قواعد:
 - `open` ← تُفتح تلقائيًا، وتتراكم فيها التحصيلات طوال اليوم.
-- `submitted` ← بعد الإعلان، **لا تُقبل فيها تحصيلات جديدة**؛ تحصيل لاحق يفتح
-  تسوية اليوم التالي.
-- `verified` ← نهائية. محفّز يمنع أي `UPDATE` عليها.
+- `handed_over` ← بعد التسليم الموثَّق. **لا تُقبل فيها تحصيلات جديدة**؛
+  تحصيل لاحق يفتح تسوية اليوم التالي.
+- `verified` ← نهائية. محفّز يمنع أي `UPDATE` عليها، عدا حقول المطابقة البنكية.
 - `disputed` ← فرق خارج السماح ينتظر اعتماد `manager` فأعلى.
+
+**المطابقة البنكية استثناء مقصود من القفل النهائي**: كشف الحساب يصل بعد أيام،
+فحقول `bank_*` وحدها تظل قابلة للكتابة بعد الاعتماد، بدالة مخصصة وبتدقيق.
 
 ```sql
 create or replace function trg_settlement_final_lock() returns trigger
 language plpgsql as $$
 begin
   if old.state = 'verified' then
-    raise exception 'settlement_locked' using errcode = '23514';
+    -- يُسمح فقط بوسم المطابقة البنكية بعد الاعتماد
+    if (to_jsonb(new) - 'bank_reference' - 'bank_matched_at'
+                      - 'bank_matched_by' - 'updated_at')
+       is distinct from
+       (to_jsonb(old) - 'bank_reference' - 'bank_matched_at'
+                      - 'bank_matched_by' - 'updated_at')
+    then
+      raise exception 'settlement_locked' using errcode = '23514';
+    end if;
   end if;
   return new;
 end $$;
@@ -681,9 +722,11 @@ create table app_settings (
 | المفتاح | الافتراضي | المعنى |
 |---|---|---|
 | `cash.variance_tolerance_omr` | `0.100` | حد السماح للفرق قبل اعتباره متنازعًا عليه |
-| `cash.max_unsettled_days` | `2` | بعده يُمنع المندوب من تحصيل نقدي جديد |
+| `cash.max_unhanded_days` | `2` | بعده يُمنع المندوب من تحصيل جديد — يُحسب من **عدم التسليم** |
+| `cash.verify_sla_hours` | `24` | بعده تنبيه على المدقّق لتأخر الاعتماد |
+| `cash.require_deposit_proof` | `true` | إلزام صورة الإثبات للإيداع البنكي والتحويل |
 | `cash.business_day_start` | `"00:00"` | بداية يوم العمل بتوقيت مسقط |
-| `cash.require_daily_close` | `true` | تنبيه عند انتهاء اليوم بتسوية مفتوحة |
+| `cash.require_daily_close` | `true` | تذكير المندوب عبر واتساب بتسوية مفتوحة آخر اليوم |
 
 ---
 
@@ -783,8 +826,9 @@ insert into storage.buckets (id, name, public) values ('order-photos','order-pho
 | `fn_cancel_order(order_id, reason, actor)` | إلغاء مع سبب |
 | `fn_create_invoice(order_id, number, amount, actor)` | فاتورة + انتقال إلى `out_for_delivery` |
 | `fn_record_cash_payment(order_id, actor)` | دفع نقدي — يسجّله المندوب، ويُقيَّد في تسويته |
-| `fn_submit_settlement(settlement_id, declared_amount, notes)` | المندوب يعلن ما بحوزته |
-| `fn_verify_settlement(settlement_id, counted_amount, reason)` | `operator`+ يعدّ ويعتمد — يرفض اعتماد الذات |
+| `fn_hand_over_settlement(settlement_id, declared, method, ref, photo, note)` | المندوب يسلّم ويوثّق |
+| `fn_verify_settlement(settlement_id, confirmed_amount, reason)` | `operator`+ يعتمد عن بُعد من الإثبات — يرفض اعتماد الذات |
+| `fn_match_bank_deposit(settlement_id, bank_reference)` | وسم المطابقة البنكية بعد ورود الكشف |
 | `fn_approve_variance(settlement_id, reason)` | `manager`+ يعتمد فرقًا خارج السماح |
 | `fn_reverse_cash_collection(collection_id, reason)` | إلغاء تحصيل قبل الاعتماد فقط |
 | `fn_apply_payment_webhook(session_id, provider_status, payload)` | تأكيد الدفع من المزود |
@@ -802,7 +846,7 @@ insert into storage.buckets (id, name, public) values ('order-photos','order-pho
 | `trg_orders_guard_transition` | `orders` | رفض أي انتقال غير مسموح في مصفوفة الحالات |
 | `trg_orders_final_lock` | `orders` | رفض أي تعديل على طلب `completed` عدا `updated_at` |
 | `trg_orders_notify_outbox` | `orders` | إدراج إشعار في Outbox عند تغيّر الحالة إن كان مفعّلًا |
-| `trg_settlement_final_lock` | `cash_settlements` | رفض أي تعديل على تسوية `verified` |
+| `trg_settlement_final_lock` | `cash_settlements` | رفض تعديل تسوية `verified` عدا حقول المطابقة البنكية |
 | `trg_settlement_recalc` | `cash_collections` | إعادة حساب `expected_amount` عند كل تحصيل أو إلغاء |
 | `trg_audit_*` | الجداول الحساسة | كتابة `private.audit_logs` |
 | `trg_touch_updated_at` | الجميع | تحديث `updated_at` |

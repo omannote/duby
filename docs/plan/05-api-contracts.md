@@ -55,9 +55,11 @@
 | `provider_error` | عطل عند مزود خارجي |
 | `forbidden` | صلاحية غير كافية |
 | `photo_required` | الصورة إلزامية ومفقودة |
-| `unsettled_cash` | المندوب عليه تسوية متأخرة — لا تحصيل جديد |
+| `unhanded_cash` | المندوب لم يسلّم نقد أيام سابقة — لا تحصيل جديد |
 | `settlement_locked` | التسوية معتمدة ولا تقبل تعديلًا |
-| `settlement_closed` | التسوية مُعلنة ولا تقبل تحصيلات جديدة |
+| `settlement_closed` | التسوية مُسلَّمة ولا تقبل تحصيلات جديدة |
+| `proof_required` | طريقة التسليم تتطلب صورة إثبات |
+| `proof_reused` | صورة الإثبات مستخدمة في تسوية سابقة |
 | `self_verification` | لا يجوز اعتماد تسويتك أنت |
 | `variance_needs_approval` | الفرق خارج حد السماح ويحتاج اعتماد `manager`+ |
 | `photo_rejected` | الصورة رُفضت (حجم/نوع/بصمة) |
@@ -271,7 +273,7 @@
 
 الاستجابة تعيد حالة التسوية بعد القيد — فيرى المندوب فورًا كم أصبح بذمته اليوم.
 
-الأخطاء: `unsettled_cash` (تسوية متأخرة تتجاوز الحد), `invalid_transition`,
+الأخطاء: `unhanded_cash` (نقد غير مسلَّم تجاوز الحد), `invalid_transition`,
 `order_not_found`
 
 ### `POST /cash/reverse`
@@ -304,45 +306,78 @@
 → { "ok": true, "data": { "settlements": [{
       "id": "…", "business_date": "2026-09-16", "state": "open",
       "expected_amount": 18.750, "collections_count": 4,
-      "declared_amount": null, "counted_amount": null, "variance": null }]}}
+      "declared_amount": null, "confirmed_amount": null, "variance": null,
+      "handover_at": null, "blocked": false }]}}
 ```
 
-### `POST /settlements/:id/submit`
+### `POST /settlements/:id/handover`
 
-المندوب يعلن ما بحوزته فعلًا.
+المندوب يسلّم النقد ويوثّق ذلك. صاحب التسوية فقط.
 
 ```jsonc
-{ "declared_amount": 18.750, "notes": "" }
-→ { "ok": true, "data": { "settlement": { "state": "submitted",
-                                          "expected_amount": 18.750,
-                                          "declared_amount": 18.750 }}}
+// طلب
+{ "declared_amount": 18.750,
+  "handover_method": "bank_deposit",        // bank_deposit | transfer | office_handover | safe_drop
+  "handover_reference": "DEP-88421",        // اختياري
+  "proof": { "storage_path": "staging/…jpg", "byte_size": 412880, "sha256": "…" },
+  "note": "" }
+
+// نجاح
+{ "ok": true, "data": { "settlement": {
+    "state": "handed_over", "expected_amount": 18.750,
+    "declared_amount": 18.750, "handover_at": "2026-09-16T19:40:11Z" }}}
 ```
 
-- المستدعي يجب أن يكون صاحب التسوية.
-- بعدها لا تُقبل تحصيلات جديدة فيها — تحصيل لاحق يفتح تسوية اليوم التالي.
+**ضمانات العقد**:
 
-الأخطاء: `forbidden`, `settlement_locked`, `invalid_input`
+1. `bank_deposit` و`transfer` تتطلبان `proof` ← وإلا `proof_required`.
+2. بصمة `sha256` مستخدمة في تسوية سابقة ← `proof_reused`. هذا يمنع إعادة استخدام
+   إيصال إيداع قديم.
+3. بعد النجاح **لا تُقبل تحصيلات جديدة** في هذه التسوية — تحصيل لاحق يفتح تسوية
+   اليوم التالي.
+4. الصورة تُنقل من المسار المؤقت إلى النهائي فقط عند نجاح العملية.
+
+الأخطاء: `forbidden`, `settlement_locked`, `proof_required`, `proof_reused`,
+`invalid_input`
 
 ### `GET /settlements`
 
 قائمة التسويات مع تصفية. `operator` فأعلى.
 
 ```
-?business_date=2026-09-16&state=submitted&courier_id=…
+?business_date=2026-09-16&state=handed_over&courier_id=…&overdue=true
+```
+
+`overdue=true` تُرجع ما تجاوز `cash.verify_sla_hours` بلا اعتماد.
+
+### `GET /settlements/:id`
+
+تفاصيل تسوية واحدة، مع **رابط موقّع لصورة الإثبات** — وهو ما يمكّن الاعتماد عن بُعد.
+
+```jsonc
+→ { "ok": true, "data": { "settlement": {
+      "id": "…", "courier": { "id": "…", "name": "محمد" },
+      "business_date": "2026-09-16", "state": "handed_over",
+      "expected_amount": 18.750, "declared_amount": 18.750,
+      "collections": [{ "order_no": 1042, "amount": 4.500, "collected_at": "…" }],
+      "handover_method": "bank_deposit", "handover_reference": "DEP-88421",
+      "handover_at": "2026-09-16T19:40:11Z",
+      "proof_url": "https://…", "proof_url_expires_in": 120,
+      "hours_since_handover": 14.2 }}}
 ```
 
 ### `POST /settlements/:id/verify`
 
-`operator` فأعلى يعدّ النقد ويعتمد.
+`operator` فأعلى يعتمد **عن بُعد** بمطابقة الإثبات — لا بعدّ حضوري.
 
 ```jsonc
 // طلب
-{ "counted_amount": 18.500, "variance_reason": "عجز 0.250 — فكّة ناقصة" }
+{ "confirmed_amount": 18.750, "variance_reason": "" }
 
 // نجاح: الفرق صفر أو ضمن السماح
 { "ok": true, "data": { "settlement": {
     "state": "verified", "expected_amount": 18.750,
-    "counted_amount": 18.500, "variance": -0.250,
+    "confirmed_amount": 18.750, "variance": 0.000,
     "verified_by": "…", "verified_at": "…" }}}
 
 // الفرق خارج السماح
@@ -352,11 +387,12 @@
 
 **ضمانات العقد**:
 
-1. `verified_by = courier_id` ← `self_verification` مرفوض في قاعدة البيانات.
+1. `verified_by = courier_id` ← `self_verification` مرفوض في قاعدة البيانات،
+   **بلا استثناء لأي دور بما فيه `admin`**.
 2. `expected_amount` لا يُقبل من الطلب — يُحسب من `cash_collections`.
 3. `variance` عمود محسوب، لا يُرسل ولا يُكتب.
 4. فرق غير صفري بلا سبب ← `invalid_input`.
-5. التسوية `verified` نهائية — أي محاولة تعديل ← `settlement_locked`.
+5. التسوية `verified` مقفلة — أي تعديل عدا المطابقة البنكية ← `settlement_locked`.
 
 الأخطاء: `self_verification`, `settlement_locked`, `forbidden`, `invalid_input`
 
@@ -365,25 +401,39 @@
 `manager` فأعلى، للتسويات `disputed`.
 
 ```jsonc
-{ "reason": "عُدّ بحضور المشرف — خصم من مستحقات المندوب" }
+{ "reason": "الفرق مطابق لكشف البنك — خصم من مستحقات المندوب" }
 → { "ok": true, "data": { "settlement": { "state": "verified", "approved_by": "…" }}}
 ```
 
 لا يجوز للمعتمِد أن يكون المندوب نفسه — مفروض بقيد.
 
+### `POST /settlements/:id/match-bank`
+
+وسم المطابقة البنكية بعد ورود كشف الحساب. `operator` فأعلى.
+**الاستثناء الوحيد المسموح على تسوية معتمدة.**
+
+```jsonc
+{ "bank_reference": "TXN-2026-09-17-0042" }
+→ { "ok": true, "data": { "settlement": { "bank_matched_at": "…" }}}
+```
+
+### `GET /settlements/unmatched`
+
+إيداعات معتمدة بلا مرجع بنكي. `operator` فأعلى.
+
 ### `GET /settlements/pending-cash`
 
-النقد غير المسوّى لكل مندوب حسب العمر. `operator` فأعلى.
+النقد **غير المسلَّم** لكل مندوب حسب العمر. `operator` فأعلى.
 
 ```jsonc
 → { "ok": true, "data": { "couriers": [{
       "courier_id": "…", "name": "…",
       "open_settlements": 1, "oldest_business_date": "2026-09-15",
-      "pending_amount": 18.750, "days_overdue": 1, "blocked": false }]}}
+      "unhanded_amount": 18.750, "days_unhanded": 1, "blocked": false }]}}
 ```
 
-`blocked: true` يعني أن المندوب تجاوز `cash.max_unsettled_days` ولا يستطيع
-تسجيل تحصيل جديد.
+`blocked: true` يعني تجاوز `cash.max_unhanded_days`. التسويات المسلَّمة
+بانتظار الاعتماد **لا تدخل هنا ولا تسبب حجبًا** — التأخير على المدقّق لا المندوب.
 
 ---
 
