@@ -9,8 +9,9 @@ import { Properties } from './screens/Properties.js';
 import { Customers } from './screens/Customers.js';
 import { Orders } from './screens/Orders.js';
 import { Cash } from './screens/Cash.js';
+import { NotificationSettings } from './screens/NotificationSettings.js';
 
-type Tab = 'orders' | 'cash' | 'customers' | 'properties' | 'more';
+type Tab = 'orders' | 'cash' | 'customers' | 'properties' | 'notifications' | 'more';
 
 export function App() {
   const session = useStaffSession();
@@ -74,11 +75,20 @@ export function App() {
         {tab === 'cash' && <Cash role={staff.role} staffId={staff.staffId} />}
         {tab === 'customers' && <Customers role={staff.role} />}
         {tab === 'properties' && <Properties role={staff.role} />}
+        {tab === 'notifications' && <NotificationSettings role={staff.role} />}
         {tab === 'more' && (
           <section>
             <header className="screen-header">
               <h2>المزيد</h2>
             </header>
+            <button type="button" className="ghost wide" onClick={() => setTab('notifications')}>
+              إشعارات الحالات
+            </button>
+
+            <button type="button" className="ghost wide" onClick={() => setTab('properties')}>
+              العقارات
+            </button>
+
             <dl className="facts">
               <dt>الموظف</dt>
               <dd>{staff.fullName}</dd>
@@ -104,13 +114,6 @@ export function App() {
         </button>
         <button type="button" data-active={tab === 'customers'} onClick={() => setTab('customers')}>
           العملاء
-        </button>
-        <button
-          type="button"
-          data-active={tab === 'properties'}
-          onClick={() => setTab('properties')}
-        >
-          العقارات
         </button>
         <button type="button" data-active={tab === 'more'} onClick={() => setTab('more')}>
           المزيد

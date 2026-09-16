@@ -154,3 +154,51 @@ test.describe('الصندوق — المرحلة 4ب', () => {
     expect(bundle).toContain('سيظهر هذا في تقرير الاستثناءات');
   });
 });
+
+test.describe('الإشعارات — المرحلة الخامسة', () => {
+  test('إعدادات الحالات والمعاينة في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('معاينة واتساب');
+    expect(bundle).toContain('إشعارات الحالات');
+    // المعطَّل يُسجَّل لا يُهمَل — والواجهة تقول ذلك للمستخدم
+    expect(bundle).toContain('يُسجَّل الإشعار كـ«متجاوَز»');
+  });
+
+  test('سجل الإشعارات يعرض سبب الفشل لا رسالة عامة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('فشل — سيُعاد');
+    expect(bundle).toContain('توقّف بعد المحاولات');
+    expect(bundle).toContain('متجاوَز (الإشعار معطّل)');
+  });
+
+  test('لا مفتاح جسر واتساب في حزمة الواجهة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).not.toMatch(/wab_live_|wab_test_/);
+    expect(bundle).not.toMatch(/WHATSAPP_BRIDGE_API_KEY/);
+    expect(bundle).not.toMatch(/send-notification/);
+  });
+});

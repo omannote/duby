@@ -15,6 +15,25 @@ type HistoryRow = {
 
 type PhotoRow = { id: string; kind: string; storage_path: string; taken_at: string };
 
+type NotificationRow = {
+  id: number;
+  state: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped' | 'dead';
+  message: string;
+  attempts: number;
+  last_error_code: string | null;
+  created_at: string;
+  sent_at: string | null;
+};
+
+const NOTIFICATION_STATES: Record<NotificationRow['state'], string> = {
+  pending: 'بانتظار الإرسال',
+  sending: 'جارٍ الإرسال',
+  sent: 'أُرسل',
+  failed: 'فشل — سيُعاد',
+  skipped: 'متجاوَز (الإشعار معطّل)',
+  dead: 'توقّف بعد المحاولات',
+};
+
 const PHOTO_LABELS: Record<string, string> = {
   intake: 'صورة العميل',
   pickup: 'صورة الاستلام',
@@ -25,13 +44,14 @@ const PHOTO_LABELS: Record<string, string> = {
 export function OrderDetails({ order, onBack }: { order: Order; onBack: () => void }) {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [openPhoto, setOpenPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
 
     void (async () => {
-      const [historyResult, photosResult] = await Promise.all([
+      const [historyResult, photosResult, notificationsResult] = await Promise.all([
         supabase
           .from('order_status_history')
           .select('id, from_status, to_status, changed_at, reason, staff:changed_by(full_name)')
@@ -41,10 +61,13 @@ export function OrderDetails({ order, onBack }: { order: Order; onBack: () => vo
           .from('order_photos')
           .select('id, kind, storage_path, taken_at')
           .eq('order_id', order.id),
+        // الطابور في مخطط private؛ هذه الدالة المنفذ الوحيد إليه
+        supabase.rpc('fn_order_notifications', { p_order_id: order.id }),
       ]);
 
       setHistory((historyResult.data ?? []) as unknown as HistoryRow[]);
       setPhotos((photosResult.data ?? []) as PhotoRow[]);
+      setNotifications((notificationsResult.data ?? []) as NotificationRow[]);
     })();
   }, [order.id]);
 
@@ -91,6 +114,37 @@ export function OrderDetails({ order, onBack }: { order: Order; onBack: () => vo
               <button type="button" onClick={() => void viewPhoto(photo.storage_path)}>
                 {PHOTO_LABELS[photo.kind] ?? photo.kind}
               </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 className="section-title">الإشعارات</h3>
+      {notifications.length === 0 ? (
+        <p className="empty">لا إشعارات.</p>
+      ) : (
+        <ul className="cards">
+          {notifications.map((notification) => (
+            <li key={notification.id} className="card">
+              <div className="card-main">
+                <span>{notification.message}</span>
+                <span className="muted">
+                  {new Date(notification.created_at).toLocaleString('ar-OM')}
+                  {notification.attempts > 0 && ` · ${notification.attempts} محاولة`}
+                  {notification.last_error_code && ` · ${notification.last_error_code}`}
+                </span>
+              </div>
+              <span
+                className={
+                  notification.state === 'sent'
+                    ? 'badge-on'
+                    : notification.state === 'dead'
+                      ? 'badge-off'
+                      : 'badge-warn'
+                }
+              >
+                {NOTIFICATION_STATES[notification.state]}
+              </span>
             </li>
           ))}
         </ul>

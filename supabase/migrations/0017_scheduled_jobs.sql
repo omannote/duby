@@ -30,6 +30,24 @@ begin
       '0 2 * * *',
       $cron$ select fn_apply_retention() $cron$
     );
+
+    -- عامل الإشعارات كل دقيقة
+    perform cron.schedule(
+      'duby-notifications-drain',
+      '* * * * *',
+      $cron$ select net.http_post(
+        url := current_setting('app.functions_url', true) || '/notifications',
+        headers := jsonb_build_object('Authorization',
+                     'Bearer ' || current_setting('app.service_key', true))
+      ) $cron$
+    );
+
+    -- تذكير المندوبين بالإيداع عند نهاية يوم العمل بتوقيت مسقط (20:00 → 16 UTC)
+    perform cron.schedule(
+      'duby-handover-reminders',
+      '0 16 * * *',
+      $cron$ select fn_enqueue_handover_reminders() $cron$
+    );
   end if;
 end $$;
 
