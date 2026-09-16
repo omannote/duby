@@ -55,16 +55,24 @@ export default defineConfig({
   /*
    * تخدم ما بناه scripts/e2e-build.mjs، ولا تبني. القيم مخبوزة في الحزمة
    * وقت البناء فلا يحتاجها preview، والمهلة تخصّ الصعود وحده لا بناءً كاملًا.
+   *
+   * `--host 127.0.0.1` صريح: vite preview يربط على `localhost` افتراضيًا،
+   * وهو على بعض العدّادات يُحلّ إلى ::1 وحدها بينما يستطلع Playwright العنوان
+   * الرابع — فلا يردّ أحد وتنقضي المهلة بلا خطأ يفسّرها.
+   *
+   * `--strictPort` كذلك: بدونه ينتقل vite إلى المنفذ التالي حين يكون المنفذ
+   * مشغولًا، فيبقى العنوان المُستطلَع صامتًا وتظهر المشكلة مهلةً منقضية لا
+   * منفذًا مشغولًا.
    */
   webServer: [
     {
-      command: 'pnpm --filter @duby/staff preview --port 4173',
+      command: 'pnpm --filter @duby/staff preview --host 127.0.0.1 --port 4173 --strictPort',
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
     {
-      command: 'pnpm --filter @duby/customer preview --port 4174',
+      command: 'pnpm --filter @duby/customer preview --host 127.0.0.1 --port 4174 --strictPort',
       url: 'http://127.0.0.1:4174',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
