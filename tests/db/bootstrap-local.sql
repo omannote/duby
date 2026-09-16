@@ -42,11 +42,21 @@ alter default privileges in schema public grant all on sequences to anon, authen
 -- ── مخطط auth ─────────────────────────────────────────────────────────────
 create schema if not exists auth;
 
+/*
+ * البريد بفهرس جزئي فريد كما في Supabase (users_email_partial_key)، لا قيد
+ * unique بسيط. الفرق ليس شكليًا: `on conflict (email)` يعمل مع القيد ويفشل
+ * مع الفهرس الجزئي — وهو بالضبط ما أسقط بروفة الترحيل في CI بينما مرّت محليًا.
+ */
 create table if not exists auth.users (
-  id            uuid primary key default gen_random_uuid(),
-  email         text unique,
+  -- بلا default: GoTrue يولّد المعرّف في Supabase، والعمود هناك NOT NULL بلا قيمة
+  id            uuid primary key,
+  email         text,
+  is_sso_user   boolean not null default false,
   created_at    timestamptz not null default now()
 );
+
+create unique index if not exists users_email_partial_key
+  on auth.users (email) where (is_sso_user = false);
 
 -- تقرأ هوية المستخدم من مطالبات JWT، تمامًا كما في Supabase
 create or replace function auth.uid()

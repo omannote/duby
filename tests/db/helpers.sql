@@ -5,7 +5,9 @@ language plpgsql
 as $$
 declare v_user uuid; v_staff uuid;
 begin
-  insert into auth.users (email) values (gen_random_uuid() || '@test.local')
+  -- المعرّف صريح: auth.users في Supabase بلا default على id
+  insert into auth.users (id, email)
+  values (gen_random_uuid(), gen_random_uuid() || '@test.local')
   returning id into v_user;
 
   insert into staff (user_id, full_name, role) values (v_user, p_name, p_role)

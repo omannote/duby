@@ -66,6 +66,19 @@ function check(label, actual, expected) {
   console.log(`  ${ok ? '✓' : '✗'} ${label}${ok ? '' : ` — توقّعنا ${expected} وجاء ${actual}`}`);
 }
 
+/*
+ * تنظيف قبل البدء لا بعده فقط: تشغيل سابق انقطع في منتصفه يترك حسابات
+ * `@myduby.test` قائمة، فيمرّ الفحص المسبق الذي يُفترض أن يرفض — ويسقط
+ * الاختبار السلبي لسبب لا علاقة له بالترحيل. البروفة تبدأ من حالة معلومة.
+ */
+function cleanup() {
+  psql(`drop schema if exists src cascade; drop schema if exists legacy cascade`);
+  psql(`delete from private.migration_log;
+        delete from auth.users where email like '%@myduby.test'`);
+}
+
+cleanup();
+
 console.log('تهيئة مصدر يحاكي النظام السابق…');
 runFile('tests/migration/legacy-fixture.sql');
 runFile('scripts/migration/01-source-adapter.sql');
@@ -283,9 +296,7 @@ check('والتحقق مرّ', psql(`select count(*) from src.verify() where not
 
 console.log('\nتنظيف…');
 runFile('scripts/migration/06-rollback.sql');
-psql('drop schema if exists src cascade; drop schema if exists legacy cascade;');
-psql(`delete from private.migration_log;
-      delete from auth.users where email like '%@myduby.test'`);
+cleanup();
 
 if (failures > 0) {
   console.error(`\n✗ فشل ${failures} فحصًا في بروفة الترحيل`);
