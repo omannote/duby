@@ -30,6 +30,15 @@ grant usage on schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to service_role;
 alter default privileges in schema public grant all on sequences to service_role;
 
+/*
+ * Supabase يمنح anon وauthenticated كل الصلاحيات على جداول public افتراضيًا،
+ * ويُترك للهجرات أن تنزع ما لا يجوز. محاكاته هنا ضرورية لا تجميلية: قاعدة
+ * اختبار أشدّ من الإنتاج تُخفي ثغرة بدل أن تكشفها — وهذا ما حدث فعلًا مع
+ * صلاحية TRUNCATE التي بقيت لـauthenticated حتى الهجرة 0026.
+ */
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+
 -- ── مخطط auth ─────────────────────────────────────────────────────────────
 create schema if not exists auth;
 
@@ -55,8 +64,12 @@ as $$
 $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
-grant select on auth.users to authenticated;
-grant all on auth.users to service_role;
+
+/*
+ * لا صلاحية لأحد على auth.users — كما في Supabase الحقيقي حيث يملكها
+ * supabase_auth_admin ولا anon ولا authenticated ولا حتى service_role يقرؤها.
+ * منحُها هنا كان يجعل اختبارات تمرّ محليًا وتفشل في الإنتاج.
+ */
 
 -- ── مخطط storage ──────────────────────────────────────────────────────────
 create schema if not exists storage;

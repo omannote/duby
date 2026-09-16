@@ -2,6 +2,13 @@
 begin;
 select plan(43);
 
+/*
+ * حساب الموظف يُنشأ قبل تبديل الدور: auth.users ليست ملكًا لأي من أدوار
+ * التطبيق في Supabase — ولا service_role يكتب فيها.
+ */
+insert into auth.users (id, email)
+values ('99999999-9999-9999-9999-999999999999', 'staff@test.local');
+
 set local role service_role;
 
 insert into properties (id, code, name)
@@ -13,8 +20,6 @@ values ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-1111111
 insert into customer_qr_tokens (customer_id, token)
 values ('22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333');
 
-insert into auth.users (id, email)
-values ('99999999-9999-9999-9999-999999999999', 'staff@test.local');
 insert into staff (id, user_id, full_name, role)
 values ('88888888-8888-8888-8888-888888888888', '99999999-9999-9999-9999-999999999999',
         'سالم الموظف', 'operator');
