@@ -114,8 +114,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # مثبَّت لا latest: الأنواع المولَّدة مُلتزَمة، وبوابة ADR-002 تقارن
+      # المولَّد بالملتزَم. مولِّد يتغيّر وحده يعني بوابة تحمرّ بلا سبب.
       - uses: supabase/setup-cli@v1
-        with: { version: latest }
+        with: { version: 2.117.0 }
 
       - name: تشغيل Supabase محليًا
         run: supabase start

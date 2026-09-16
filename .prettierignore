@@ -11,3 +11,7 @@ docs/
 # وظائف Edge تُنسَّق بـ deno fmt وفق supabase/functions/deno.json —
 # تركها للأداتين معًا يجعلهما تتنازعان على نفس الملفات
 supabase/functions/
+
+# مولَّد من مخطط قاعدة البيانات بـ`pnpm gen:types`. تنسيقه يدويًا يجعل الملف
+# الملتزَم يختلف عن المولَّد، فتحمرّ بوابة تباعد الأنواع بلا تباعد حقيقي.
+packages/shared/src/db.ts
