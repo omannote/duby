@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { callRpc } from '../lib/api.js';
+import { LaunchReadiness } from '../components/LaunchReadiness.js';
 
 /*
  * التقارير تجيب عن «كيف يسير العمل»؛ هذه الشاشة تجيب عن «هل النظام نفسه
@@ -74,6 +75,8 @@ export function OpsHealth() {
           تحديث
         </button>
       </header>
+
+      <LaunchReadiness />
 
       <h3 className="section-title">آخر ٢٤ ساعة</h3>
       <div className="kpi-grid">

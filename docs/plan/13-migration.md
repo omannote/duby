@@ -110,75 +110,64 @@ end
 
 ```
 scripts/migration/
+├── attach-source.sh             استعادة تفريغ الإنتاج في مخطط legacy
+├── 01-source-adapter.sql        عروض src فوق legacy + خريطة الحالات
+├── decisions.sql                جداول القرارات البشرية (§4)
 ├── 00-audit-source.sql          تقرير كامل عن الحالة الحالية
-├── 01-export-source.ts          تصدير إلى JSON مع تدقيق
-├── 02-transform.ts              التحويل + قواعد الحالات
-├── 03-validate-transform.ts     فحوص ما قبل التحميل
-├── 04-load-target.ts            التحميل بترتيب الاعتماديات
-├── 05-migrate-storage.ts        نسخ الصور
-├── 06-verify.sql                مطابقة المصدر بالهدف
-└── 07-rollback.sql              إلغاء كامل للترحيل
+├── 02-preflight.sql             فحوص ما قبل التحميل — بوابة ترفع استثناءً
+├── 03-transform-load.sql        التحويل والتحميل في معاملة واحدة
+├── 04-migrate-storage.mjs       نسخ الصور وحساب بصماتها
+├── 05-verify.sql                مطابقة المصدر بالهدف
+├── 06-rollback.sql              إلغاء كامل للترحيل
+└── run.sh                       تشغيلها بالترتيب مع وقفة قبل الكتابة
 ```
+
+### لماذا SQL لا TypeScript
+
+الخطة الأصلية هنا كانت `export → transform → load` بثلاثة سكربتات TypeScript.
+النظامان كلاهما على PostgreSQL، فالمسار الأقصر أدق:
+
+- لا رحلة ذهاب وإياب عبر JSON تفقد الأنواع (`numeric` يصير `number`، والطوابع
+  الزمنية تفقد منطقتها).
+- التحويل والتحميل في **معاملة واحدة**: إمّا كامل أو لا شيء. الفصل بينهما كان
+  يترك عند أول فشل قاعدةً نصف مُرحَّلة — وهي أسوأ من فارغة لأنها تبدو سليمة.
+- الصور وحدها بقيت في سكربت Node، لأن Storage API ليس SQL.
+
+### نقطة التكيّف الوحيدة
+
+`01-source-adapter.sql` هو الملف الوحيد الذي يُعدَّل إن اختلف مخطط المصدر عمّا
+نتوقعه. بقية السكربتات تقرأ من `src` ولا تعرف أسماء أعمدة النظام القديم.
+
+### البروفة
+
+`pnpm test:migration` يشغّل الدورة كاملة على مصدر اختباري يغطي كل حالة صعبة:
+فحص مسبق يرفض، ثم يمرّ، ثم تحميل، ثم تحقق من كل تحويل، ثم تراجع، ثم إعادة
+تحميل. يعمل في CI، فكسر أي سكربت ترحيل يوقف البناء.
 
 ### `00-audit-source.sql` — يُنفَّذ في المرحلة 1
 
-```sql
--- توزيع الحالات × النسخة
-select workflow_version, status, count(*),
-       count(*) filter (where delivery_photo_path is not null) as with_delivery_photo
-  from orders group by 1,2 order by 1,2;
-
--- الشذوذ
-select 'عميل بلا عقار' as issue, count(*) from customers where property_id is null
-union all
-select 'طلب بلا صورة استلام', count(*) from orders
- where status not in ('new','confirmed','cancelled') and pickup_photo_path is null
-union all
-select 'مكتمل غير مدفوع', count(*) from orders
- where status = 'completed' and payment_status <> 'paid'
-union all
-select 'رقم فاتورة مكرر', count(*) from (
-  select invoice_number from orders where invoice_number is not null
-   group by 1 having count(*) > 1) t
-union all
-select 'هاتف مكرر بين الفعّالين', count(*) from (
-  select phone from customers where is_active and phone is not null
-   group by 1 having count(*) > 1) t;
-```
+تقرير للقراءة فقط: الأحجام، وتوزيع الحالات × النسخة مع دليل صورة التسليم،
+وأحد عشر فحص شذوذ (عميل بلا عقار، مكتمل غير مدفوع، هاتف مكرر، رقم فاتورة
+مكرر، رمز QR مكرر…)، وأعداد الصور، والنقد التاريخي لكل مندوب.
 
 > **مهم**: يُنفَّذ في **المرحلة 1** لا المرحلة 7. معرفة حجم الشذوذ مبكرًا تحدد
 > قواعد الترحيل وتمنع مفاجأة قبل الإطلاق بأيام.
 
-### `06-verify.sql` — بوابة القبول
+### `02-preflight.sql` — بوابة ما قبل الكتابة
 
-```sql
--- العدد
-select 'customers', (select count(*) from source.customers),
-                    (select count(*) from public.customers);
-select 'orders',    (select count(*) from source.orders),
-                    (select count(*) from public.orders);
+يرفع استثناءً ما دام مانع واحدًا قائمًا: قرار بشري ناقص، أو موظف بلا حساب في
+المشروع الجديد، أو حالة قديمة لا خريطة لها، أو شذوذ يكسر قيدًا في المخطط
+الجديد. التحذيرات (بيانات حساب الإيداع، العطل الرسمية) لا توقف التشغيل لكنها
+تظهر، وتُغلَق من بوابة جاهزية الإطلاق.
 
--- المجاميع المالية
-select 'invoice_total', (select sum(invoice_amount) from source.orders),
-                        (select sum(invoice_amount) from public.orders);
+### `05-verify.sql` — بوابة القبول
 
--- سلامة العلاقات
-select count(*) as orphan_orders from orders o
-  left join customers c on c.id = o.customer_id where c.id is null;
+ستة عشر فحصًا تقارن المصدر بالهدف: الأعداد لكل كيان، ومجموع الفواتير، ومجموع
+المدفوع (مع الفارق المقصود من قرارات D4 مضافًا صراحةً لا مُبرَّرًا شفويًا)، وأن
+لكل رمز QR قديم سطرًا ساريًا بالقيمة نفسها، ولا طلبات يتيمة، ولا حالة غير
+معروفة، وأن التسويات الافتتاحية بفرق صفر.
 
--- كل رمز QR قديم له مقابل فعّال
-select count(*) as missing_tokens from source.customers sc
-  where not exists (select 1 from customer_qr_tokens t
-                     where t.token = sc.qr_token and t.revoked_at is null);
-
--- لا حالة غير معروفة
-select status, count(*) from orders
- where status not in ('new','confirmed','picked_up','processing',
-                      'ready','out_for_delivery','completed','cancelled')
- group by 1;
-```
-
-الترحيل لا يُعتمد إلا إذا كانت كل الأعداد متطابقة والشذوذ صفرًا.
+الترحيل لا يُعتمد إلا إذا مرّت كلها. الملف يرفع استثناءً عند أي فشل.
 
 ---
 

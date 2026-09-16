@@ -256,3 +256,21 @@ test.describe('التقارير — المرحلة السادسة', () => {
     expect(bundle).toContain('fn_ops_health');
   });
 });
+
+test.describe('الإطلاق — المرحلة السابعة', () => {
+  test('بطاقة جاهزية الإطلاق في الحزمة', async ({ page }) => {
+    const scripts: string[] = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('.js')) scripts.push(await response.text());
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const bundle = scripts.join('\n');
+    expect(bundle).toContain('جاهزية الإطلاق');
+    expect(bundle).toContain('fn_launch_readiness');
+    // البطاقة تعرض أثر النقص لا اسمه فقط، وإلا قُرئت تحذيرًا اختياريًا
+    expect(bundle).toContain('إعادة الفحص');
+  });
+});

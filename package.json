@@ -19,6 +19,7 @@
     "test:db": "node scripts/run-db-tests.mjs",
     "test:e2e": "playwright test",
     "perf:reports": "node scripts/perf-reports.mjs",
+    "test:migration": "node scripts/test-migration.mjs",
     "size-limit": "size-limit",
     "gen:types": "node scripts/gen-types.mjs",
     "verify:headers": "node scripts/verify-headers.mjs --file apps/staff/public/_headers apps/customer/public/_headers",

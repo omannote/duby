@@ -887,3 +887,36 @@ button.wide {
 .report-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* ── جاهزية الإطلاق ─────────────────────────────────────────────────────── */
+.readiness {
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 1.2rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+}
+
+.readiness h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.readiness ul {
+  margin: 0 0 0.7rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.readiness li {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
+.readiness li .muted {
+  font-size: 0.78rem;
+}
