@@ -11,6 +11,9 @@ const DB_URL =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const TEST_DIR = 'tests/db';
 
+/** ملفات تهيئة تُحمَّل قبل الاختبارات ولا تُعد اختبارات بذاتها. */
+const SETUP_FILES = ['helpers.sql'];
+
 function psql(sql) {
   return execFileSync('psql', [DB_URL, '-v', 'ON_ERROR_STOP=1', '-X', '-q', '-c', sql], {
     encoding: 'utf8',
@@ -23,6 +26,22 @@ try {
   console.error('تعذّر تفعيل pgTAP. هل قاعدة Supabase المحلية تعمل؟ شغّل: pnpm db:start');
   console.error(error.message);
   process.exit(1);
+}
+
+for (const setup of SETUP_FILES) {
+  try {
+    execFileSync(
+      'psql',
+      [DB_URL, '-v', 'ON_ERROR_STOP=1', '-X', '-q', '-f', join(TEST_DIR, setup)],
+      {
+        encoding: 'utf8',
+      },
+    );
+  } catch (error) {
+    console.error(`تعذّر تحميل ${setup}`);
+    console.error(error.stderr ?? error.message);
+    process.exit(1);
+  }
 }
 
 const files = readdirSync(TEST_DIR)
@@ -44,7 +63,10 @@ for (const file of files) {
       encoding: 'utf8',
     });
     process.stdout.write(output);
-    if (/^not ok/m.test(output)) failed += 1;
+    // psql يطبع أسطر TAP بمسافة بادئة، فلا بد من السماح بها
+    if (/^\s*not ok/m.test(output) || /Looks like you (failed|planned)/.test(output)) {
+      failed += 1;
+    }
   } catch (error) {
     process.stdout.write(error.stdout ?? '');
     console.error(error.stderr ?? error.message);

@@ -36,10 +36,20 @@ export default defineConfig({
     { name: 'mobile-safari', use: { ...devices['iPhone SE'] } },
   ],
 
+  /*
+   * يُبنى التطبيق هنا بقيم اختبار صريحة بدل الاعتماد على بيئة الغلاف.
+   * بلا قيم يعرض التطبيق شاشة «غير مهيّأ» فتفشل كل الاختبارات لسبب غير حقيقي.
+   * القيم وهمية ولا تتصل بمشروع فعلي — الاختبارات هنا لا تلمس قاعدة بيانات.
+   */
   webServer: {
-    command: 'pnpm --filter @duby/staff preview --port 4173',
+    command: 'pnpm --filter @duby/staff build && pnpm --filter @duby/staff preview --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    timeout: 120_000,
+    env: {
+      VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+      VITE_SUPABASE_ANON_KEY: 'test-anon-key-not-a-real-credential',
+      VITE_APP_VERSION: 'e2e',
+    },
   },
 });

@@ -1,83 +1,117 @@
-import { useEffect, useState } from 'react';
-import { ORDER_STATUS_LABELS, nextStatus } from '@duby/shared';
+import { useState } from 'react';
+import { ROLE_LABELS } from '@duby/shared';
 import { APP_VERSION } from './version.js';
-import { isConfigured, supabase } from './supabase.js';
+import { isConfigured } from './supabase.js';
+import { signOut, useStaffSession } from './lib/session.js';
+import { SignIn } from './screens/SignIn.js';
+import { Properties } from './screens/Properties.js';
+import { Customers } from './screens/Customers.js';
 
-type Health = 'checking' | 'connected' | 'unreachable' | 'unconfigured';
+type Tab = 'customers' | 'properties' | 'more';
 
-/**
- * شاشة المرحلة صفر: تثبت أن خط النشر يعمل من طرف إلى طرف.
- * تُستبدل بهيكل التطبيق في المرحلة الأولى.
- */
 export function App() {
-  const [health, setHealth] = useState<Health>(isConfigured ? 'checking' : 'unconfigured');
+  const session = useStaffSession();
+  const [tab, setTab] = useState<Tab>('customers');
 
-  useEffect(() => {
-    if (!supabase) return;
-    let cancelled = false;
+  if (!isConfigured) {
+    return <Notice title="التطبيق غير مهيّأ" body="لم تُضبط بيانات الاتصال بقاعدة البيانات." />;
+  }
 
-    /*
-     * اتصال حقيقي بقاعدة البيانات عبر دالة صحة عامة. لا نقرأ جدولًا هنا لأن
-     * anon لا يملك وصولًا إلى أي جدول — وهذا هو المطلوب.
-     */
-    void (async () => {
-      try {
-        const { error } = await supabase.rpc('health_check');
-        if (!cancelled) setHealth(error ? 'unreachable' : 'connected');
-      } catch {
-        if (!cancelled) setHealth('unreachable');
-      }
-    })();
+  if (session.status === 'loading') {
+    return <Notice title="جارٍ التحميل…" body="" />;
+  }
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  if (session.status === 'signed-out') {
+    return <SignIn />;
+  }
+
+  /*
+   * حساب دخول بلا سجل موظف فعّال — أو موظف عُطّل بعد دخوله. auth_role() تعيد
+   * null فلا يقرأ شيئًا؛ نوضح السبب بدل ترك شاشة فارغة.
+   */
+  if (session.status === 'no-profile') {
+    return (
+      <Notice
+        title="لا يوجد حساب موظف فعّال"
+        body="هذا الحساب غير مرتبط بموظف فعّال. راجع مدير النظام."
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
+
+  const { staff } = session;
 
   return (
     <div className="app-shell">
       <header className="app-header">
-        <span className="brand">دوبي</span>
-        <span className="subtitle">لوحة الموظفين</span>
+        <div>
+          <span className="brand">دوبي</span>
+          <span className="subtitle">{ROLE_LABELS[staff.role]}</span>
+        </div>
+        <span className="staff-name">{staff.fullName}</span>
       </header>
 
       <main className="app-content">
-        <h1>مرحبًا يا دوبي</h1>
-        <p className="lede">
-          خط النشر يعمل. هذه الشاشة مؤقتة وتُستبدل بهيكل التطبيق في المرحلة الأولى.
-        </p>
-
-        <dl className="facts">
-          <dt>الإصدار</dt>
-          <dd>{APP_VERSION}</dd>
-
-          <dt>قاعدة البيانات</dt>
-          <dd data-health={health}>{healthLabel(health)}</dd>
-
-          <dt>المسار التالي من «مؤكد»</dt>
-          <dd>{ORDER_STATUS_LABELS[nextStatus('confirmed')!.to]}</dd>
-        </dl>
+        {tab === 'customers' && <Customers role={staff.role} />}
+        {tab === 'properties' && <Properties role={staff.role} />}
+        {tab === 'more' && (
+          <section>
+            <header className="screen-header">
+              <h2>المزيد</h2>
+            </header>
+            <dl className="facts">
+              <dt>الموظف</dt>
+              <dd>{staff.fullName}</dd>
+              <dt>الدور</dt>
+              <dd>{ROLE_LABELS[staff.role]}</dd>
+              <dt>الإصدار</dt>
+              <dd>{APP_VERSION}</dd>
+            </dl>
+            {/* زر خروج ظاهر دائمًا — كان مفقودًا في النظام السابق */}
+            <button type="button" className="danger" onClick={() => void signOut()}>
+              تسجيل الخروج
+            </button>
+          </section>
+        )}
       </main>
 
-      <nav className="app-nav">
-        <span>الطلبات</span>
-        <span>العملاء</span>
-        <span>الصندوق</span>
-        <span>المزيد</span>
+      <nav className="app-nav no-print">
+        <button type="button" data-active={tab === 'customers'} onClick={() => setTab('customers')}>
+          العملاء
+        </button>
+        <button
+          type="button"
+          data-active={tab === 'properties'}
+          onClick={() => setTab('properties')}
+        >
+          العقارات
+        </button>
+        <button type="button" data-active={tab === 'more'} onClick={() => setTab('more')}>
+          المزيد
+        </button>
       </nav>
     </div>
   );
 }
 
-function healthLabel(health: Health): string {
-  switch (health) {
-    case 'checking':
-      return 'جارٍ الفحص…';
-    case 'connected':
-      return 'متصلة';
-    case 'unreachable':
-      return 'غير متاحة';
-    case 'unconfigured':
-      return 'غير مهيّأة';
-  }
+function Notice({
+  title,
+  body,
+  onSignOut,
+}: {
+  title: string;
+  body: string;
+  onSignOut?: () => void;
+}) {
+  return (
+    <div className="notice">
+      <h1>{title}</h1>
+      {body && <p>{body}</p>}
+      {onSignOut && (
+        <button type="button" onClick={onSignOut}>
+          تسجيل الخروج
+        </button>
+      )}
+    </div>
+  );
 }

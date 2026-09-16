@@ -12,10 +12,13 @@
   "dependencies": {
     "@duby/shared": "workspace:*",
     "@supabase/supabase-js": "^2.47.10",
+    "@tanstack/react-query": "^5.103.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

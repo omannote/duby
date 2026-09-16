@@ -119,3 +119,270 @@ h1 {
     transition: none !important;
   }
 }
+
+/* ── تسجيل الدخول ──────────────────────────────────────────────────────── */
+.signin {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.signin-card {
+  width: min(100%, 22rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+  background: var(--surface);
+  border-radius: 1rem;
+  border: 1px solid #e5e7eb;
+}
+
+.signin-card h1 {
+  margin: 0;
+  text-align: center;
+}
+
+.signin-subtitle {
+  margin: 0 0 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.notice {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+/* ── عناصر النماذج ─────────────────────────────────────────────────────── */
+label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input,
+select {
+  /* ≥16px وإلا قرّب Safari الصفحة تلقائيًا عند التركيز */
+  font: inherit;
+  font-size: 16px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  min-height: 44px; /* مساحة لمس كافية */
+  padding: 0.6rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.danger {
+  background: var(--danger);
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+/* ── الشاشات والبطاقات ─────────────────────────────────────────────────── */
+.screen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.screen-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--brand);
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.card-actions button {
+  min-height: 36px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.error {
+  padding: 0.6rem 0.75rem;
+  margin: 0 0 1rem;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 0.5rem;
+  color: var(--danger);
+}
+
+/* الشارة تحمل نصًّا أيضًا — اللون وحده لا يحمل المعنى */
+.badge-on,
+.badge-off,
+.badge-warn {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.badge-on {
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.badge-off {
+  background: #fef3f2;
+  color: var(--danger);
+}
+
+.badge-warn {
+  background: #fffaeb;
+  color: #b54708;
+}
+
+.staff-name {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+}
+
+.app-header {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-nav button {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 0;
+  min-height: 40px;
+}
+
+.app-nav button[data-active='true'] {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+/* ── بطاقة QR ──────────────────────────────────────────────────────────── */
+.qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.qr-placeholder {
+  width: 220px;
+  height: 220px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px dashed #d1d5db;
+}
+
+.qr-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.qr-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+@media print {
+  .no-print,
+  .app-header,
+  .app-nav {
+    display: none !important;
+  }
+
+  .app-shell {
+    height: auto;
+    overflow: visible;
+  }
+}
