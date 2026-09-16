@@ -1,12 +1,33 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 /*
  * ملفات منفصلة لا حزمة مضمّنة — هذا ما يسمح بـ CSP صارم بلا 'unsafe-inline'.
  * النظام السابق كان ملفًا واحدًا فاضطر إلى السماح بالسكربت المضمّن.
  */
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      registerType: 'prompt', // لا تحديث صامت: الموظف يعرف أن نسخته تغيّرت
+      injectManifest: { globPatterns: ['**/*.{js,css,html,woff2}'] },
+      manifest: {
+        name: 'دوبي — لوحة الموظفين',
+        short_name: 'دوبي',
+        lang: 'ar',
+        dir: 'rtl',
+        start_url: '/',
+        display: 'standalone',
+        background_color: '#F7F8F7',
+        theme_color: '#0F3D2E',
+        icons: [],
+      },
+    }),
+  ],
   build: {
     target: 'es2022',
     assetsInlineLimit: 0,

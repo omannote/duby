@@ -12,7 +12,19 @@ export function serviceClient(): SupabaseClient {
   return createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 }
 
-export type StaffIdentity = { staffId: string; role: string; userId: string };
+export type StaffIdentity = {
+  staffId: string;
+  role: string;
+  userId: string;
+  /**
+   * عميل مقيّد بجلسة الموظف.
+   *
+   * دوال النطاق تُستدعى به لا بـ service_role: الأخير لا يحمل مطالبة sub
+   * فـ auth_role() تعيد null وترد كل دالة forbidden (ADR-011). أما التخزين
+   * فيحتاج service_role، فتستخدم الوظيفة العميلين معًا لغرضين مختلفين.
+   */
+  client: SupabaseClient;
+};
 
 /**
  * يتحقق من جلسة الموظف ويعيد دوره.
@@ -38,5 +50,5 @@ export async function requireStaff(request: Request): Promise<StaffIdentity | nu
   const { data: staffId } = await scoped.rpc('auth_staff_id');
   if (!staffId) return null;
 
-  return { staffId, role, userId: user.user.id };
+  return { staffId, role, userId: user.user.id, client: scoped };
 }

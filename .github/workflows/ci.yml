@@ -48,6 +48,10 @@ jobs:
       - name: بناء الواجهات
         run: pnpm build
 
+      # اسم القاعدة يُصغَّر عند البناء، فلا يكفي وجودها في المصدر
+      - name: Service Worker لا يعترض Supabase
+        run: pnpm verify:sw
+
       - name: حجم الحزمة
         run: pnpm size-limit
 

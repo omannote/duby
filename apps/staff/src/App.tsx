@@ -1,17 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ROLE_LABELS } from '@duby/shared';
 import { APP_VERSION } from './version.js';
 import { isConfigured } from './supabase.js';
 import { signOut, useStaffSession } from './lib/session.js';
+import { watchForUpdates } from './lib/update-prompt.js';
 import { SignIn } from './screens/SignIn.js';
 import { Properties } from './screens/Properties.js';
 import { Customers } from './screens/Customers.js';
+import { Orders } from './screens/Orders.js';
 
-type Tab = 'customers' | 'properties' | 'more';
+type Tab = 'orders' | 'customers' | 'properties' | 'more';
 
 export function App() {
   const session = useStaffSession();
-  const [tab, setTab] = useState<Tab>('customers');
+  const [tab, setTab] = useState<Tab>('orders');
+  const [applyUpdate, setApplyUpdate] = useState<(() => void) | null>(null);
+
+  // التحديث معلن لا صامت: الموظف يعرف أن نسخته تغيّرت
+  useEffect(() => {
+    watchForUpdates((apply) => setApplyUpdate(() => apply));
+  }, []);
 
   if (!isConfigured) {
     return <Notice title="التطبيق غير مهيّأ" body="لم تُضبط بيانات الاتصال بقاعدة البيانات." />;
@@ -43,6 +51,15 @@ export function App() {
 
   return (
     <div className="app-shell">
+      {applyUpdate && (
+        <div className="update-bar" role="status">
+          <span>يتوفر إصدار جديد</span>
+          <button type="button" onClick={applyUpdate}>
+            تحديث
+          </button>
+        </div>
+      )}
+
       <header className="app-header">
         <div>
           <span className="brand">دوبي</span>
@@ -52,6 +69,7 @@ export function App() {
       </header>
 
       <main className="app-content">
+        {tab === 'orders' && <Orders />}
         {tab === 'customers' && <Customers role={staff.role} />}
         {tab === 'properties' && <Properties role={staff.role} />}
         {tab === 'more' && (
@@ -76,6 +94,9 @@ export function App() {
       </main>
 
       <nav className="app-nav no-print">
+        <button type="button" data-active={tab === 'orders'} onClick={() => setTab('orders')}>
+          الطلبات
+        </button>
         <button type="button" data-active={tab === 'customers'} onClick={() => setTab('customers')}>
           العملاء
         </button>
