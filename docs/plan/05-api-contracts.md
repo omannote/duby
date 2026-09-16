@@ -58,7 +58,8 @@
 | `unhanded_cash` | المندوب لم يسلّم نقد أيام سابقة — لا تحصيل جديد |
 | `settlement_locked` | التسوية معتمدة ولا تقبل تعديلًا |
 | `settlement_closed` | التسوية مُسلَّمة ولا تقبل تحصيلات جديدة |
-| `proof_required` | طريقة التسليم تتطلب صورة إثبات |
+| `proof_required` | الطريقة تتطلب صورة إثبات ورقم إيصال |
+| `exception_reason_required` | طريقة غير الإيداع البنكي تتطلب سببًا |
 | `proof_reused` | صورة الإثبات مستخدمة في تسوية سابقة |
 | `self_verification` | لا يجوز اعتماد تسويتك أنت |
 | `variance_needs_approval` | الفرق خارج حد السماح ويحتاج اعتماد `manager`+ |
@@ -315,11 +316,12 @@
 المندوب يسلّم النقد ويوثّق ذلك. صاحب التسوية فقط.
 
 ```jsonc
-// طلب
+// طلب — bank_deposit هي الافتراضية إن أُغفل الحقل
 { "declared_amount": 18.750,
-  "handover_method": "bank_deposit",        // bank_deposit | transfer | office_handover | safe_drop
-  "handover_reference": "DEP-88421",        // اختياري
+  "handover_method": "bank_deposit",        // افتراضية؛ البدائل استثناءات
+  "handover_reference": "DEP-88421",        // إلزامي للإيداع والتحويل
   "proof": { "storage_path": "staging/…jpg", "byte_size": 412880, "sha256": "…" },
+  "exception_reason": null,                 // إلزامي لغير الإيداع البنكي
   "note": "" }
 
 // نجاح
@@ -330,15 +332,19 @@
 
 **ضمانات العقد**:
 
-1. `bank_deposit` و`transfer` تتطلبان `proof` ← وإلا `proof_required`.
-2. بصمة `sha256` مستخدمة في تسوية سابقة ← `proof_reused`. هذا يمنع إعادة استخدام
+1. `handover_method` افتراضها `bank_deposit` إن لم تُرسل.
+2. `bank_deposit` و`transfer` تتطلبان `proof` **و**`handover_reference`
+   ← وإلا `proof_required`. المرجع هو مفتاح المطابقة مع كشف الحساب.
+3. أي طريقة غير `bank_deposit` تتطلب `exception_reason`
+   ← وإلا `exception_reason_required`.
+4. بصمة `sha256` مستخدمة في تسوية سابقة ← `proof_reused`. هذا يمنع إعادة استخدام
    إيصال إيداع قديم.
-3. بعد النجاح **لا تُقبل تحصيلات جديدة** في هذه التسوية — تحصيل لاحق يفتح تسوية
+5. بعد النجاح **لا تُقبل تحصيلات جديدة** في هذه التسوية — تحصيل لاحق يفتح تسوية
    اليوم التالي.
-4. الصورة تُنقل من المسار المؤقت إلى النهائي فقط عند نجاح العملية.
+6. الصورة تُنقل من المسار المؤقت إلى النهائي فقط عند نجاح العملية.
 
-الأخطاء: `forbidden`, `settlement_locked`, `proof_required`, `proof_reused`,
-`invalid_input`
+الأخطاء: `forbidden`, `settlement_locked`, `proof_required`,
+`exception_reason_required`, `proof_reused`, `invalid_input`
 
 ### `GET /settlements`
 
@@ -419,7 +425,28 @@
 
 ### `GET /settlements/unmatched`
 
-إيداعات معتمدة بلا مرجع بنكي. `operator` فأعلى.
+إيداعات معتمدة بلا مطابقة بنكية. `operator` فأعلى. تقرير أسبوعي أساسي، لا هامشي.
+
+```jsonc
+→ { "ok": true, "data": { "settlements": [{
+      "id": "…", "courier": "محمد", "business_date": "2026-09-16",
+      "confirmed_amount": 18.750, "handover_reference": "DEP-88421",
+      "days_unmatched": 9, "sla_breached": true }]}}
+```
+
+### `GET /settlements/exceptions`
+
+التسويات التي أُقفلت بغير الإيداع البنكي وأسبابها. `manager` فأعلى.
+
+```jsonc
+→ { "ok": true, "data": { "settlements": [{
+      "courier": "محمد", "business_date": "2026-09-14",
+      "handover_method": "safe_drop", "exception_reason": "البنك مغلق — عيد",
+      "confirmed_amount": 12.000 }],
+    "summary": { "total_exceptions": 3, "share_of_settlements": 0.08 } }}
+```
+
+`share_of_settlements` هو المؤشر الذي يهم: ارتفاعه يعني أن الاستثناء صار قاعدة.
 
 ### `GET /settlements/pending-cash`
 
@@ -429,11 +456,13 @@
 → { "ok": true, "data": { "couriers": [{
       "courier_id": "…", "name": "…",
       "open_settlements": 1, "oldest_business_date": "2026-09-15",
-      "unhanded_amount": 18.750, "days_unhanded": 1, "blocked": false }]}}
+      "unhanded_amount": 18.750, "working_days_unhanded": 1, "blocked": false }]}}
 ```
 
-`blocked: true` يعني تجاوز `cash.max_unhanded_days`. التسويات المسلَّمة
-بانتظار الاعتماد **لا تدخل هنا ولا تسبب حجبًا** — التأخير على المدقّق لا المندوب.
+`working_days_unhanded` محسوبة بأيام العمل — العطل لا تُحتسب لأن البنك مغلق فيها.
+
+`blocked: true` يعني تجاوز `cash.max_unhanded_days`. التسويات المُودَعة بانتظار
+الاعتماد **لا تدخل هنا ولا تسبب حجبًا** — التأخير على المدقّق لا المندوب.
 
 ---
 

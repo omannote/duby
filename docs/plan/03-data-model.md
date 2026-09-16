@@ -464,11 +464,12 @@ create table cash_settlements (
                    generated always as (confirmed_amount - expected_amount) stored,
 
   -- التسليم الموثَّق
-  handover_method    handover_method,
-  handover_reference text,                             -- رقم إيصال أو تحويل
-  handover_photo_id  uuid references order_photos(id), -- إثبات التسليم
+  handover_method    handover_method default 'bank_deposit',
+  handover_reference text,                             -- رقم إيصال الإيداع — مفتاح المطابقة
+  handover_photo_id  uuid references order_photos(id), -- إثبات الإيداع
   handover_at        timestamptz,
   handover_note      text,
+  handover_exception_reason text,                      -- إلزامي لغير الإيداع البنكي
 
   -- الاعتماد عن بُعد
   opened_at        timestamptz not null default now(),
@@ -507,11 +508,17 @@ alter table cash_settlements add constraint cash_settlement_handover_complete
     declared_amount is not null and handover_method is not null
     and handover_at is not null));
 
--- الإيداع البنكي والتحويل يتطلبان إثباتًا مصوَّرًا
+-- الإيداع البنكي والتحويل يتطلبان إثباتًا مصوَّرًا ومرجعًا
 alter table cash_settlements add constraint cash_settlement_deposit_needs_proof
   check (handover_method is null
          or handover_method not in ('bank_deposit','transfer')
-         or handover_photo_id is not null);
+         or (handover_photo_id is not null
+             and length(btrim(coalesce(handover_reference,''))) >= 3));
+
+-- أي طريقة غير الإيداع البنكي استثناء يتطلب سببًا مسجّلًا
+alter table cash_settlements add constraint cash_settlement_exception_needs_reason
+  check (handover_method is null or handover_method = 'bank_deposit'
+         or length(btrim(coalesce(handover_exception_reason,''))) >= 3);
 
 -- الاعتماد يتطلب مبلغًا مؤكَّدًا ومدقّقًا ووقتًا
 alter table cash_settlements add constraint cash_settlement_verified_complete
@@ -540,6 +547,10 @@ create index cash_settlements_unmatched_idx on cash_settlements(verified_at)
 > **صورة الإثبات تمر بنفس مسار صور الطلبات**: حاوية خاصة، رابط موقّع، وبصمة
 > `sha256` فريدة. البصمة هنا ليست تفصيلًا — هي ما يمنع إعادة استخدام إيصال
 > إيداع قديم لإقفال يوم جديد.
+>
+> **`handover_method` افتراضها `bank_deposit`**، وهي الطريقة المعتمدة. الطرق
+> الأخرى ممكنة لكنها استثناءات: كل واحدة تتطلب سببًا مسجّلًا وتظهر في تقرير
+> مستقل. القيد الأخير هو ما يجعل الاستثناء مكلفًا بما يكفي ليبقى استثناءً.
 
 `tolerance_limit()` تقرأ `app_settings` بمفتاح `cash.variance_tolerance_omr`
 (افتراضيًا 0.100 ر.ع).
@@ -577,6 +588,25 @@ returns date language sql stable as $$
   select (ts at time zone 'Asia/Muscat')::date
 $$;
 ```
+
+#### عمر النقد غير المودَع — بأيام العمل
+
+البنك مغلق في عطلة نهاية الأسبوع والعطل الرسمية، فاحتساب المهلة بالأيام
+التقويمية كان سيحجب مندوبًا حصّل يوم الخميس لمجرد أن الجمعة والسبت مرّا.
+
+```sql
+create or replace function working_days_between(d1 date, d2 date)
+returns int language sql stable as $$
+  select count(*)::int
+    from generate_series(d1, d2 - 1, interval '1 day') g(day)
+   where extract(isodow from g.day)::int
+         <> all (select jsonb_array_elements_text(value)::int
+                   from app_settings where key = 'cash.weekend_isodow')
+     and g.day::date not in (select holiday_date from public_holidays)
+$$;
+```
+
+`public_holidays` جدول بسيط يملؤه `admin` سنويًا بالعطل الرسمية العمانية.
 
 التوقيت المحلي مهم: تسليم الساعة 9 مساءً بتوقيت مسقط هو 17:00 UTC من نفس اليوم،
 لكن تسليم الساعة 1 صباحًا هو 21:00 UTC من **اليوم السابق**. حساب يوم العمل
@@ -704,7 +734,21 @@ create index audit_actor_idx  on private.audit_logs(actor_id, created_at desc);
 يُكتب بمحفّزات على الجداول الحساسة. مخطط `private` = لا وصول من الواجهة أبدًا؛
 القراءة تمر عبر دالة مقيّدة بـ`admin`.
 
-### 2.16 `app_settings`
+### 2.16 `public_holidays` — العطل الرسمية
+
+```sql
+create table public_holidays (
+  holiday_date date primary key,
+  label        text not null,
+  created_by   uuid references staff(id),
+  created_at   timestamptz not null default now()
+);
+```
+
+يملؤه `admin` سنويًا. يُستخدم في `working_days_between()` وحدها، فلا يؤثر في
+أي منطق آخر.
+
+### 2.17 `app_settings`
 
 ```sql
 create table app_settings (
@@ -722,9 +766,14 @@ create table app_settings (
 | المفتاح | الافتراضي | المعنى |
 |---|---|---|
 | `cash.variance_tolerance_omr` | `0.100` | حد السماح للفرق قبل اعتباره متنازعًا عليه |
-| `cash.max_unhanded_days` | `2` | بعده يُمنع المندوب من تحصيل جديد — يُحسب من **عدم التسليم** |
+| `cash.default_handover_method` | `"bank_deposit"` | الطريقة المختارة مسبقًا في نافذة الإيداع |
+| `cash.max_unhanded_days` | `2` | بعده يُمنع المندوب من تحصيل جديد — **أيام عمل**، من عدم الإيداع |
+| `cash.weekend_isodow` | `[5,6]` | الجمعة والسبت — لا تُحتسب في المهلة |
+| `cash.bank_match_sla_days` | `7` | بعده تنبيه على إيداع معتمد بلا مطابقة بنكية |
+| `cash.bank_account_label` | `"حساب دوبي — بنك ..."` | يظهر للمندوب في نافذة الإيداع |
+| `cash.bank_account_hint` | `"****4821"` | آخر أربعة أرقام فقط — تذكير لا بيانات كاملة |
 | `cash.verify_sla_hours` | `24` | بعده تنبيه على المدقّق لتأخر الاعتماد |
-| `cash.require_deposit_proof` | `true` | إلزام صورة الإثبات للإيداع البنكي والتحويل |
+| `cash.require_deposit_proof` | `true` | إلزام صورة الإثبات والمرجع للإيداع البنكي والتحويل |
 | `cash.business_day_start` | `"00:00"` | بداية يوم العمل بتوقيت مسقط |
 | `cash.require_daily_close` | `true` | تذكير المندوب عبر واتساب بتسوية مفتوحة آخر اليوم |
 
